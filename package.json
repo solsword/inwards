@@ -1,0 +1,29 @@
+{
+  "name": "inwards",
+  "version": "0.0.1",
+  "description": "Inwards; Onwards platforming game.",
+  "private": true,
+  "keywords": [
+    "game",
+    "platformer"
+  ],
+  "scripts": {
+    "build": "???",
+    "lint": "eslint ./src/**/*.js"
+  },
+  "author": "Peter Mawhorter <pmawhorter@gmail.com>",
+  "license": "GPLv3",
+  "devDependencies": {
+    "jspm": "^0.16.53"
+  },
+  "jspm": {
+    "dependencies": {
+      "lodash": "npm:lodash@^4.17.10"
+    },
+    "devDependencies": {
+      "babel": "npm:babel-core@^5.8.24",
+      "babel-runtime": "npm:babel-runtime@^5.8.24",
+      "core-js": "npm:core-js@^1.1.4"
+    }
+  }
+}
