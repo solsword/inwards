@@ -6,7 +6,8 @@ var KEY_COMMANDS = {};
 // Mouse button state
 var MOUSE_BUTTON_STATE = {};
 
-export function canvas_position_of_event(e, ctx) {
+export function canvas_position_of_event(ctx, e) {
+  // Figures out the canvas position of a mouse or touch event.
   if (e.touches) {
     e = e.touches[0];
   }
@@ -79,7 +80,7 @@ function handle_mouse(ctx, type, button, e) {
   } else if (type == "up") {
     MOUSE_BUTTON_STATE[button] = false;
   }
-  var vpos = canvas_position_of_event(e);
+  var vpos = canvas_position_of_event(ctx, e);
   var thandlers = MOUSE_HANDLERS[type];
   if (thandlers == undefined) {
     return;
@@ -132,11 +133,11 @@ export function unregister_motion_handler(button_type, handler) {
 function handle_movement(ctx, e) {
   // Motion handler gets the context, viewport position, mouse buttons state,
   // and event as arguments.
-  var vpos = canvas_position_of_event(e);
+  var vpos = canvas_position_of_event(ctx, e);
   var handlers = MOTION_HANDLERS["any"] || [];
-  for (let button of MOUSE_BUTTON_STATE) {
+  for (let button of Object.keys(MOUSE_BUTTON_STATE)) {
     if (MOUSE_BUTTON_STATE[button]) {
-      handlers = Array.concat(handlers, MOTION_HANDLERS[button]);
+      handlers = Array.concat(handlers, MOTION_HANDLERS[button] || []);
     }
   }
   for (let h of handlers) {

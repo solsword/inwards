@@ -1,8 +1,9 @@
 // draw.js
 // Drawing code for Inwards; Onwards.
 
-import * as world from world;
-import * as blocks from blocks;
+import * as world from "./world";
+import * as blocks from "./blocks";
+import * as physics from "./physics";
 
 export var FONT_SIZE = 24;
 export var FONT_FACE = "asap";
@@ -87,66 +88,97 @@ export function viewport_edges(ctx) {
   return [tl[0], tl[1], br[0], br[1]];
 }
 
-function draw_world(ctx, entity) {
-  // Draws the world around the given entity.
+export function draw_world(ctx, wld, trace) {
+  // Draws the world visible within the context's viewport using the given
+  // trace to anchor location.
   // TODO: Chunk rendering...
   let edges = viewport_edges(ctx);
-  let epos = entity.position;
-  let escale = entity.scale;
-  let eloc = entity.location;
 
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = Math.floor(FONT_SIZE * ctx.viewport_scale) + "px " + FONT_FACE;
 
-  let parent_loc = eloc[eloc.length - 2];
-  let base_loc = eloc[eloc.length - 1];
-  if (parent_loc == undefined) {
-    // draw just the base pane
-    let target_pane = base_loc[1];
-  } else {
-    // draw starting at parent
-    let target_pane = parent_loc[1];
-    let edges = world.outer_edges(target_pane, base_loc, edges);
-    let epos = world.outer_position(target_pane, base_loc, epos);
-    let escale = world.outer_scale(target_pane, base_loc, escale);
+  let target_loc = undefined;
+  let target_pid = undefined;
+  let depth_adjust = 0;
+  for (let i = trace.length - 1; i >= 0; --i) {
+    if (trace[i] == undefined) {
+      // TODO: Hallucinate parents here?
+      break;
+    }
+    if (target_pid != undefined) {
+      depth_adjust += 1;
+      let lpos = target_loc[0];
+      let sf = world.get_scale_factor(wld, trace[i][1], lpos);
+      let new_edges = [
+        world.outer_coord(edges[0], lpos[0], sf),
+        world.outer_coord(edges[1], lpos[1], sf),
+        world.outer_coord(edges[2], lpos[0], sf),
+        world.outer_coord(edges[3], lpos[1], sf)
+      ];
+      edges = new_edges;
+    }
+    target_loc = trace[i];
+    target_pid = target_loc[1];
   }
 
-  // TODO: HERE
-
-  tiles = content.list_tiles(dimension, edges);
-  var any_undefined = false;
-  tiles.forEach(function(tile) {
-    draw_tile(ctx, tile);
-    if (tile["glyph"] == undefined) {
-      any_undefined = true;
-    }
-  });
-  return !any_undefined;
+  // Call recursive drawing function.
+  draw_panes(ctx, wld, target_pid, edges, -depth_adjust);
 }
 
-function draw_supertile(ctx, sgp, supertile) {
-  var base_pos = grid.gpos(sgp);
-  for (var x = 0; x < grid.SUPERTILE_SIZE; ++x) {
-    for (var y = 0; y < grid.SUPERTILE_SIZE; ++y) {
-      if (grid.is_valid_subindex([x, y])) {
-        var idx = x + y * grid.SUPERTILE_SIZE;
-        var gp = [ base_pos[0] + x, base_pos[1] + y ];
-        var tile = {
-          "pos": gp,
-          "colors": supertile.colors[idx],
-          "glyph": supertile.glyphs[idx],
-          "domain": supertile.domains[idx],
-        }
-        draw_tile(ctx, tile);
-      }
+export function draw_panes(ctx, wld, target_pid, edges, depth) {
+  // Takes a drawing context, a world, a target pane id, and a
+  // left/top/right/bottom edges list, and draws that portion of that pane.
+  // Recursively expands edges so that inner panes are correctly drawn at a
+  // smaller scale. Tracks depth and cuts off after depth 2; never renders
+  // blocks/panes that fall outside the given edges.
+  if (depth > 2) {
+    return;
+  }
+
+  let ew = edges[2] - edges[0];
+  let eh = edges[3] - edges[1];
+  let hscale = ctx.cwidth / ew;
+  let vscale = ctx.cheight / eh;
+
+  function x_(x) { return (x - edges[0]) * hscale; }
+  function y_(y) { return (y - edges[1]) * vscale; }
+
+  let pane = wld.panes[target_pid];
+
+  // Draw blocks:
+  for (let x = 0; x < world.PANE_SIZE; ++x) {
+    for (let y = 0; y < world.PANE_SIZE; ++y) {
+      let block = world.block_at(pane, [x, y]);
+      ctx.fillStyle = blocks.color(block);
+      ctx.strokeStyle = blocks.accent_color(block);
+      // TODO: Stroke width?
+      ctx.beginPath();
+      ctx.moveTo(x_(x), y_(y));
+      ctx.lineTo(x_(x+1), y_(y));
+      ctx.lineTo(x_(x+1), y_(y+1));
+      ctx.lineTo(x_(x), y_(y+1));
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     }
+  }
+  // Recursively draw inlays:
+  for (let ins of pane.inlays) {
+    let sf = ins.size / world.PANE_SIZE;
+    let inner_edges = [
+      world.inner_coord(edges[0], ins.at[0], sf),
+      world.inner_coord(edges[1], ins.at[1], sf),
+      world.inner_coord(edges[2], ins.at[0], sf),
+      world.inner_coord(edges[3], ins.at[1], sf),
+    ];
+    draw_panes(wld, ins.id, inner_edges, depth + 1);
   }
 }
 
 // Draws an edge of the given shape with the given center point, radius, and
 // corner radius.
-function draw_edge(ctx, e_shape, side, cx, cy, r, cr) {
+export function draw_edge(ctx, e_shape, side, cx, cy, r, cr) {
   ctx.save()
   ctx.translate(cx, cy);
   ctx.rotate((Math.PI / 2) * side);
@@ -496,7 +528,7 @@ function draw_edge(ctx, e_shape, side, cx, cy, r, cr) {
 
 // Draws a corner of the given shape at the given points with the given
 // orientation, corner point, radius, and corner radius.
-function draw_corner(ctx, shape, ori, x, y, r, cr) {
+export function draw_corner(ctx, shape, ori, x, y, r, cr) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((Math.PI / 2) * ori);
@@ -533,36 +565,10 @@ function draw_corner(ctx, shape, ori, x, y, r, cr) {
   ctx.restore();
 }
 
-function draw_hex_rim(ctx, wpos) {
-  ctx.strokeStyle = TILE_COLORS["outline"];
-  ctx.fillStyle = TILE_COLORS["inner"];
-
-  ctx.lineWidth=2;
-
-  ctx.beginPath();
-  once = true;
-  grid.VERTICES.forEach(function (vertex) {
-    vertex = vertex.slice();
-    vertex[0] += wpos[0];
-    vertex[1] += wpos[1];
-
-    var vv = view_pos(ctx, vertex);
-    if (once) {
-      ctx.moveTo(vv[0], vv[1]);
-      once = false;
-    } else {
-      ctx.lineTo(vv[0], vv[1]);
-    }
-  });
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-}
-
 // Takes a context, an array of four shape integers, a center position, and a
 // radius and draws a pad shape to put a glyph on. Stroking and/or filling
 // this shape is up to the caller.
-function draw_pad_shape(ctx, shape, cx, cy, r) {
+export function draw_pad_shape(ctx, shape, cx, cy, r) {
   ctx.beginPath();
   var olj = ctx.lineJoin;
   // ctx.lineJoin = "round";
@@ -587,221 +593,8 @@ function draw_pad_shape(ctx, shape, cx, cy, r) {
   ctx.lineJoin = olj;
 }
 
-function draw_tile(ctx, tile) {
-  var gpos = tile["pos"];
-  var wpos = grid.world_pos(gpos);
-  var colors = tile["colors"];
-  var glyph = tile["glyph"];
-  var domain = tile["domain"];
-
-  var vpos = view_pos(ctx, wpos);
-
-  // No matter what goes inside, draw the rim + background:
-  draw_hex_rim(ctx, wpos);
-
-  if (glyph == undefined) { // an unloaded tile: just draw a dim '?'
-    // The question mark:
-    ctx.fillStyle = TILE_COLORS["pad"];
-    ctx.fillText('?', vpos[0], vpos[1]);
-
-  } else if (domain == "__object__") { // an active object
-    var energized = content.is_energized(tile["dimension"], gpos);
-
-    // The glyph:
-    if (energized) {
-      ctx.fillStyle = TILE_COLORS["unlocked-glyph"];
-    } else {
-      ctx.fillStyle = TILE_COLORS["pad"];
-    }
-    ctx.fillText(glyph, vpos[0], vpos[1]);
-
-    // TODO: More special here!
-
-  } else { // a loaded normal tile: the works
-    var unlocked = content.is_unlocked(tile["dimension"], gpos);
-
-    // Hexagon highlight
-    ctx.lineWidth=3;
-    // TODO DEBUG
-    if (colors.length > 0) {
-      var side_colors = [];
-      if (colors.length <= 3 || colors.length >= 6) {
-        colors.forEach(function (c) {
-          side_colors.push(PALETTE[c]);
-        });
-      } else if (colors.length == 4) {
-        side_colors = [
-          TILE_COLORS["inner"], // invisible
-          PALETTE[colors[0]],
-          PALETTE[colors[1]],
-          TILE_COLORS["inner"], // invisible
-          PALETTE[colors[2]],
-          PALETTE[colors[3]],
-        ];
-      } else if (colors.length == 5) {
-        side_colors = [
-          TILE_COLORS["inner"], // invisible
-          PALETTE[colors[0]],
-          PALETTE[colors[1]],
-          PALETTE[colors[2]],
-          PALETTE[colors[3]],
-          PALETTE[colors[4]],
-        ];
-      } else {
-        // Should be impossible
-        console.log("Internal Error: invalid colors length: "+ colors.length);
-      }
-
-      for (var i = 0; i < grid.VERTICES.length; ++i) {
-        tv = grid.VERTICES[i].slice();
-        tv[0] *= 0.9;
-        tv[1] *= 0.9;
-        tv[0] += wpos[0];
-        tv[1] += wpos[1];
-
-        var ni = (i + 1) % grid.VERTICES.length;
-        nv = grid.VERTICES[ni].slice();
-        nv[0] *= 0.9;
-        nv[1] *= 0.9;
-        nv[0] += wpos[0];
-        nv[1] += wpos[1];
-
-        var tvv = view_pos(ctx, tv);
-        var nvv = view_pos(ctx, nv);
-
-        ctx.strokeStyle = side_colors[i % side_colors.length];
-
-        ctx.beginPath();
-        ctx.moveTo(tvv[0], tvv[1]);
-        ctx.lineTo(nvv[0], nvv[1]);
-        ctx.stroke();
-      }
-    }
-
-    // Inner circle
-    //var r = grid.GRID_EDGE * 0.63 * ctx.viewport_scale;
-    var r = grid.GRID_EDGE * 0.58 * ctx.viewport_scale;
-    /* DEBUG TODO
-    if (colors.length > 0) {
-      ctx.fillStyle = BG_PALETTE[colors[0]];
-    } else {
-      ctx.fillStyle = TILE_COLORS["pad"];
-    }
-    // */
-    //* DEBUG
-    if (unlocked) {
-      ctx.fillStyle = TILE_COLORS["unlocked-pad"];
-      ctx.strokeStyle = TILE_COLORS["unlocked-rim"];
-    } else if (tile.is_inclusion) {
-      ctx.fillStyle = TILE_COLORS["included-pad"];
-      ctx.strokeStyle = TILE_COLORS["included-rim"];
-    } else {
-      ctx.fillStyle = TILE_COLORS["pad"];
-      ctx.strokeStyle = TILE_COLORS["rim"];
-    }
-    // */
-    var shape = colors.length == 0;
-    draw_pad_shape(
-      ctx,
-      tile.shape,
-      vpos[0],
-      vpos[1],
-      r
-    );
-
-    // Letter
-    if (unlocked) {
-      ctx.fillStyle = TILE_COLORS["unlocked-glyph"];
-    } else {
-      ctx.fillStyle = TILE_COLORS["glyph"];
-    }
-    ctx.fillText(glyph, vpos[0], vpos[1]);
-  }
-}
-
-function draw_swipe(ctx, gplist, do_highlight) {
-  // Takes a context, a list of grid positions defining the current swipe,
-  // and whether or not to highlight this swipe, and draws the swipe.
-  if (gplist.length == 0) {
-    return;
-  }
-
-  // Highlight hexes:
-  for (var i = 0; i < gplist.length - 1; ++i) {
-    draw_highlight(ctx, gplist[i], TRAIL_COLOR);
-  }
-  if (do_highlight) {
-    draw_highlight(ctx, gplist[gplist.length-1], HIGHLIGHT_COLOR);
-  } else {
-    draw_highlight(ctx, gplist[gplist.length-1], TRAIL_COLOR);
-  }
-
-  // Draw line:
-  if (do_highlight && gplist.length > 1) {
-    var wpos = grid.world_pos(gplist[0]);
-    var vpos = view_pos(ctx, wpos);
-
-    ctx.strokeStyle = TRAIL_COLOR;
-    ctx.beginPath();
-    ctx.moveTo(vpos[0], vpos[1]);
-    // curves along the path:
-    for (var i = 1; i < gplist.length - 1; ++i) {
-      var vcp = view_pos(ctx, grid.world_pos(gplist[i]));
-      var vncp = view_pos(ctx, grid.world_pos(gplist[i+1]));
-      ctx.quadraticCurveTo(
-        vcp[0],
-        vcp[1],
-        (vcp[0] + vncp[0])/2,
-        (vcp[1] + vncp[1])/2
-      );
-    }
-    // line to the last point:
-    wpos = grid.world_pos(gplist[gplist.length - 1]);
-    vpos = view_pos(ctx, wpos);
-    ctx.lineTo(vpos[0], vpos[1]);
-    ctx.stroke();
-  }
-}
-
-function draw_highlight(ctx, gpos, color) {
-  // Takes a context, a grid position, and a color, and highlights that grid
-  // cell using that color.
-  var wpos = grid.world_pos(gpos);
-  var vpos = view_pos(ctx, wpos);
-
-  ctx.lineWidth=2;
-
-  // Outer hexagon
-  ctx.strokeStyle = color;
-
-  ctx.beginPath();
-  once = true;
-  grid.VERTICES.forEach(function (vertex) {
-    // copy the vertex
-    vertex = vertex.slice();
-
-    // bring things in just a touch
-    vertex[0] *= 0.95;
-    vertex[1] *= 0.95;
-
-    // offset to our current world position
-    vertex[0] += wpos[0];
-    vertex[1] += wpos[1];
-
-    // compute view position and draw a line
-    var vv = view_pos(ctx, vertex);
-    if (once) {
-      ctx.moveTo(vv[0], vv[1]);
-      once = false;
-    } else {
-      ctx.lineTo(vv[0], vv[1]);
-    }
-  });
-  ctx.closePath();
-  ctx.stroke();
-}
-
-function draw_loading(ctx, keys, loading) {
+// TODO: Get rid of this if we're not using it?
+export function draw_loading(ctx, keys, loading) {
   var n_bars = keys.length;
   var bars_top = (
     ctx.cheight/2
@@ -857,17 +650,3 @@ function draw_loading(ctx, keys, loading) {
     ctx.fillText(txt, x+2, y+2);
   });
 }
-
-return {
-  "TILE_COLORS": TILE_COLORS,
-  "PALETTE": PALETTE,
-  "FONT_FACE": FONT_FACE,
-  "FONT_SIZE": FONT_SIZE,
-  "interp_color": interp_color,
-  "draw_tiles": draw_tiles,
-  "draw_supertile": draw_supertile,
-  "view_pos": view_pos,
-  "world_pos": world_pos,
-  "draw_swipe": draw_swipe,
-  "draw_loading": draw_loading,
-};

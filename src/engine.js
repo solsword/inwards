@@ -1,6 +1,7 @@
 import * as input from "./input";
 import * as menu from "./menu";
 import * as draw from "./draw";
+import * as world from "./world";
 import * as animate from "./animate";
 
 // Viewport & window stuff:
@@ -20,7 +21,7 @@ var PAUSE_MENU = null;
 
 // Game context:
 var THE_PLAYER = null;
-
+var CURRENT_WORLD = null;
 
 export function update_canvas_size() {
   // Updates the canvas size. Called on resize after a timeout.
@@ -32,7 +33,6 @@ export function update_canvas_size() {
   CTX.cheight = CANVAS.height;
   CTX.middle = [CTX.cwidth / 2, CTX.cheight / 2];
   CTX.bounds = bounds;
-  DO_REDRAW = 0;
   menu.set_canvas_size([CANVAS.width, CANVAS.height]);
 }
 
@@ -44,7 +44,9 @@ function draw_frame(now) {
   CTX.clearRect(0, 0, CTX.cwidth, CTX.cheight);
 
   // Draw the world:
-  draw.draw_world(CTX, THE_PLAYER)
+  draw.draw_world(CTX, CURRENT_WORLD, THE_PLAYER.trace)
+
+  // TODO: Physics
 
   // Draw animations:
   animate.draw_active(CTX, ANIMATION_FRAME);
@@ -65,6 +67,13 @@ export function go() {
   update_canvas_size();
   CTX.viewport_size = VIEWPORT_SIZE;
   CTX.viewport_center = [0, 0];
+
+  // TODO: Non-test here
+  CURRENT_WORLD = world.init_world("test");
+  let test_pane = world.create_pane(CURRENT_WORLD);
+  THE_PLAYER = world.create_entity(CURRENT_WORLD);
+  world.set_home(test_pane, [2, 8], THE_PLAYER);
+  world.warp_home(THE_PLAYER);
 
   var screensize = Math.min(window.innerWidth, window.innerHeight);
   if (screensize < 500) {
@@ -109,6 +118,7 @@ export function go() {
     { "right": 10, "bottom": 10 },
     { "width": 40, "height": 40 },
     {},
+    "■", // TODO: What should the symbol be?
     function () { menu.add_menu(PAUSE_MENU); }, // TODO: Also pause the game!
     function () { menu.remove_menu(PAUSE_MENU); },
   );

@@ -43,3 +43,27 @@ export var SMOOTH = {
 export var SLIPPERY = {
   "ice": true,
 }
+
+export function color(bid) { return BLOCKS[bid].color; }
+export function accent_color(bid) { return BLOCKS[bid].accent; }
+export function name(bid) { return BLOCKS[bid].id; }
+
+export function is_solid(bid) {
+  return SOLID[BLOCKS[bid].id] || false;
+}
+
+export function is_climable(bid) {
+  return CLIMABLE[BLOCKS[bid].id] || false;
+}
+
+export function is_liquid(bid) {
+  return LIQUID[BLOCKS[bid].id] || false;
+}
+
+export function is_smooth(bid) {
+  return SMOOTH[BLOCKS[bid].id] || false;
+}
+
+export function is_slippery(bid) {
+  return SLIPPERY[BLOCKS[bid].id] || false;
+}

@@ -1,8 +1,8 @@
 // menu.js
 // Menu system for HTML5 canvas.
 
-import * as draw from draw
-import * as locale from locale
+import * as draw from "./draw";
+import * as locale from "./locale";
 
 var MENUS = [];
 
