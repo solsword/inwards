@@ -22,23 +22,30 @@ export function get_scale_factor(wld, outer_id, pos) {
   // convert inner units to outer units, or divide by it to convert outer units
   // to inner units.
   let outer_pane = wld.panes[outer_id];
-  let isize = undefined;
   for (let inl of outer_pane.inlays) {
-    if (inl.at[0] == loc[0] && inl.at[1] == loc[1]) {
-      isize = inl.size;
-      break;
+    if (inl.at[0] == pos[0] && inl.at[1] == pos[1]) {
+      return inlay_scale_factor(inl);
     }
   }
-  return isize / PANE_SIZE;
+  return NaN;
 }
 
-function outer_coord(x, base, sf) {
+export function inlay_scale_factor(inl) {
+  // Returns the scale factor for an inlay.
+  return inl.size / PANE_SIZE;
+}
+
+export function inlay_bounds(inl) {
+  return [inl.at[0], inl.at[1], inl.at[0] + inl.size, inl.at[1] + inl.size];
+}
+
+export function outer_coord(x, base, sf) {
   // Given an inlay base coordinate and a scale factor, transforms the given
   // value into an outer-coordinate value.
   return base + x * sf;
 }
 
-function inner_coord(x, base, sf) {
+export function inner_coord(x, base, sf) {
   // Given an inlay base coordinate and a scale factor, transforms the given
   // value into an inner-coordinate value.
   return (x - base) / sf;
@@ -127,7 +134,7 @@ export function create_pane(wld, id) {
     "blocks": [],
     "parents": {},
     "inlays": [],
-    "entities": []
+    "entities": {},
   }
   for (let i = 0; i < PANE_SIZE * PANE_SIZE; ++i) {
     result.blocks.push(blocks.CHAOS);
@@ -135,6 +142,32 @@ export function create_pane(wld, id) {
 
   wld.panes[id] = result;
   return result;
+}
+
+export function canonical_parent(pane) {
+  // Returns the canonical parent pane ID for the given pane. Returns undefined
+  // only for panes that have no parents.
+  let parents = Object.keys(pane.parents);
+  if (parents.length > 0) {
+    return parents[0];
+  } else {
+    console.warn("Pane '" + pane.id + "' has no parents.");
+    return undefined;
+  }
+}
+
+export function canonical_inlay(pane) {
+  // Returns the inlay location of the given pane within its canonical parent.
+  let p = canonical_parent(pane);
+  if (p == undefined) {
+    return undefined;
+  }
+  let candidates = WORLDS[pane.world].panes[p].inlays;
+  for (let inl of candidates) {
+    if (inl.id == pane.id) {
+      return inl;
+    }
+  }
 }
 
 // TODO: More arguments?
@@ -153,9 +186,18 @@ export function create_entity(wld, id) {
   var result = {
     "world": wld.name,
     "id": id,
+    "size": 0.5,
+    "appearance": {
+      "color": "#429",
+      "border_color": "#63b",
+    },
     "home": undefined,
     "trace": [], // TODO: starting position?
     "pos": [PANE_SIZE/2, PANE_SIZE/2],
+    "vel": [0, 0],
+    "speed": 1.5 / 1000,
+    "ctl": {"x": 0, "y": 0, "jump": false },
+    "capabilities": {},
   }
 
   wld.entities[id] = result;
@@ -218,61 +260,106 @@ export function inset_pane(parent_pane, pos, child_pane, size) {
 
 export function set_home(pane, pos, entity) {
   // Sets the home of the given entity, and makes an entry for it in the given
-  // pane. Removes the entity's old home if there was one.
-  if (entity.home != undefined) {
-    // TODO: How to access old home given only ID?
-    let homeworld = by_name(entity.home.world);
-    let homepane = homeworld.panes[entity.home.pane]
-    let idx = undefined;
-    for (let i = 0; i < homepane.entities.length; ++i) {
-      if (homepane.entities[i] == entity.id) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx != undefined) {
-      homepane.entities.splice(idx, 1);
-    }
-  }
-  pane.entities.push(entity);
+  // pane. Replaces the entity's old home if there was one.
   entity.home = { "world": pane.world, "pane": pane.id, "pos": pos };
+}
+
+export function current_pane(entity) {
+  // Returns the entity's current pane.
+  if (entity.trace.length > 0) {
+    return WORLDS[entity.world].panes[entity.trace[entity.trace.length - 1][1]];
+  } else {
+    return undefined;
+  }
+}
+
+export function place_entity(entity, pid, pos) {
+  // Places the given entity onto the given pane in the given position. Resets
+  // the entity's trace.
+  let origin_pane = current_pane(entity);
+  if (origin_pane != undefined) {
+    delete origin_pane.entities[entity.id];
+  }
+  entity.trace = [ [undefined, pid] ];
+  entity.pos = pos.slice();
+  current_pane(entity).entities[entity.id] = true;
 }
 
 export function warp_home(entity) {
   // Warps the given entity back to its home, erasing any trace it might have
   // built up.
-  entity.trace = [ [undefined, entity.home.pane] ];
-  entity.pos = entity.home.pos;
+  place_entity(entity, entity.home.pane, entity.home.pos);
 }
 
-export function generate_test_pane(wld, id) {
+export function fill_test_pane(wld, id) {
   // Fills out a test pane which inlays itself to form an endless cave.
   var pane = wld.panes[id];
   fill_pane(pane, blocks.AIR);
   set_border(pane, blocks.DIRT);
   for (let x = 0; x < PANE_SIZE; ++x) {
+    for (let y = 0; y < 3; ++y) {
+      set_block(pane, [x, y], blocks.DIRT);
+    }
     for (let y = 20; y < PANE_SIZE; ++y) {
       set_block(pane, [x, y], blocks.DIRT);
     }
   }
-  for (let y = 12; y < 20; ++y) {
-    set_block(pane, 0, y, blocks.AIR);
+
+  for (let y = 2; y < 20; ++y) {
+    set_block(pane, [0, y], blocks.AIR);
   }
 
-  for (let x = 14; x < PANE_SIZE; ++x) {
-    for (let y = 0; y < PANE_SIZE; ++y) {
-      set_block(pane, [x, y], blocks.STONE);
+  for (let x = 1; x < 14; ++x) {
+    for (let y = 3; y < 10; ++y) {
+      if (x - 1 > y - 3 && x < 6 && y < 4) {
+        set_block(pane, [x, y], blocks.DIRT);
+      } else if (x - 6 >= y - 3) {
+        set_block(pane, [x, y], blocks.ROCK);
+      }
     }
   }
 
-  inset_pane(pane, 14, 12, pane, 8);
-}
+  for (let x = 14; x < PANE_SIZE - 1; ++x) {
+    for (let y = 3; y < 11; ++y) {
+      set_block(pane, [x, y], blocks.ROCK);
+    }
+  }
 
-export function place_entity(entity, loc, pos) {
-  // Reset's the given entity's location and position to the given values.
-  entity.loc = loc;
-  entity.pos = pos;
-  pane.entities.push(entity);
+  for (let x = 18; x < 23; ++x) {
+    for (let y = 3; y < 12; ++y) {
+      if (x - 18 > y - 3 || x - 18 > 12 - y) {
+        set_block(pane, [x, y], blocks.DIRT);
+      }
+    }
+  }
+
+  for (x = 14; x < 20; ++x) {
+    set_block(pane, [x, 11], blocks.DIRT);
+  }
+
+  for (x = 11; x < 15; ++x) {
+    set_block(pane, [x, 19], blocks.DIRT);
+  }
+
+  for (y = 19; y < 24; ++y) {
+    for (x = 1; x < 12; ++x) {
+      if (x - 1 >= 24 - y && 13 - x >= 24 - y) {
+        set_block(pane, [x, y], blocks.ROCK);
+      }
+    }
+    for (x = 11; x < 22; ++x) {
+      if (x - 10 >= 24 - y && 21 - x >= y - 19) {
+        set_block(pane, [x, y], blocks.ROCK);
+      }
+    }
+  }
+
+  // 点滅 blocks
+  set_block(pane, [8, 16], blocks.by_id("点滅㈠"));
+  set_block(pane, [10, 15], blocks.by_id("点滅㈡"));
+  set_block(pane, [9, 13], blocks.by_id("点滅㈢"));
+
+  inset_pane(pane, [15, 12], pane, 8);
 }
 
 export function grid_bb(pos, size) {
@@ -283,4 +370,57 @@ export function grid_bb(pos, size) {
     pos[0] + size,
     pos[1] + size
   ];
+}
+
+export function find_context(wld, edges, trace) {
+  // Finds a pane that's two panes above the end of the given trace,
+  // hallucinating extra context when necessary. Returns undefined for empty
+  // traces, otherwise it returns a [pane_id, edges, relative_depth] pair,
+  // where relative_depth will be 2 unless a parent-less pane blocks
+  // hallucination.
+  let target_loc = undefined;
+  let target_pid = undefined;
+  let depth_adjust = 0;
+  for (let i = trace.length - 1; i > trace.length - 4; --i) {
+    if (trace[i] == undefined) {
+      if (target_pid == undefined) {
+        // No basis from which to hallucinate.
+        console.warn("Empty trace has no context.");
+        return undefined;
+      } else {
+        depth_adjust += 1;
+        let tpane = wld.panes[target_pid];
+        let parent_pane = wld.panes[canonical_parent(tpane)];
+        let cinl = canonical_inlay(tpane);
+        let lpos = cinl.at;
+        let sf = get_scale_factor(wld, parent_pane.id, lpos);
+        let new_edges = [
+          outer_coord(edges[0], lpos[0], sf),
+          outer_coord(edges[1], lpos[1], sf),
+          outer_coord(edges[2], lpos[0], sf),
+          outer_coord(edges[3], lpos[1], sf)
+        ];
+        edges = new_edges;
+        target_pid = parent_pane.id;
+        target_loc = [lpos, target_pid];
+      }
+    } else if (target_pid != undefined) {
+      depth_adjust += 1;
+      let lpos = target_loc[0];
+      let sf = get_scale_factor(wld, trace[i][1], lpos);
+      let new_edges = [
+        outer_coord(edges[0], lpos[0], sf),
+        outer_coord(edges[1], lpos[1], sf),
+        outer_coord(edges[2], lpos[0], sf),
+        outer_coord(edges[3], lpos[1], sf)
+      ];
+      edges = new_edges;
+      target_loc = trace[i];
+      target_pid = target_loc[1];
+    } else {
+      target_loc = trace[i];
+      target_pid = target_loc[1];
+    }
+  }
+  return [target_pid, edges, depth_adjust];
 }

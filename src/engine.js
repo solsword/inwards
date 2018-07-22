@@ -2,10 +2,10 @@ import * as input from "./input";
 import * as menu from "./menu";
 import * as draw from "./draw";
 import * as world from "./world";
+import * as physics from "./physics";
 import * as animate from "./animate";
 
 // Viewport & window stuff:
-var VIEWPORT_SIZE = 800.0;
 var RESIZE_TIMEOUT = 20;
 
 // Canvas context:
@@ -40,13 +40,19 @@ function draw_frame(now) {
   ANIMATION_FRAME += 1; // count frames
   ANIMATION_FRAME %= animate.ANIMATION_FRAME_MAX;
 
+  // Figure out viewport parameters
+  // TODO: Incorporate player scale!
+  CTX.viewport_center = THE_PLAYER.pos.slice();
+  CTX.viewport_scale = Math.min(CTX.cwidth, CTX.cheight) / world.PANE_SIZE;
+
+  // Physics updates:
+  physics.tick_world(CURRENT_WORLD, THE_PLAYER.trace);
+
   // Clear the canvas:
   CTX.clearRect(0, 0, CTX.cwidth, CTX.cheight);
 
   // Draw the world:
   draw.draw_world(CTX, CURRENT_WORLD, THE_PLAYER.trace)
-
-  // TODO: Physics
 
   // Draw animations:
   animate.draw_active(CTX, ANIMATION_FRAME);
@@ -65,22 +71,21 @@ export function go() {
   CANVAS = document.getElementById("canvas");
   CTX = CANVAS.getContext("2d");
   update_canvas_size();
-  CTX.viewport_size = VIEWPORT_SIZE;
-  CTX.viewport_center = [0, 0];
 
   // TODO: Non-test here
   CURRENT_WORLD = world.init_world("test");
   let test_pane = world.create_pane(CURRENT_WORLD);
+  world.fill_test_pane(CURRENT_WORLD, test_pane.id);
   THE_PLAYER = world.create_entity(CURRENT_WORLD);
-  world.set_home(test_pane, [2, 8], THE_PLAYER);
+  world.set_home(test_pane, [6, 12], THE_PLAYER);
   world.warp_home(THE_PLAYER);
 
   var screensize = Math.min(window.innerWidth, window.innerHeight);
   if (screensize < 500) {
     // Smaller devices
-    CTX.viewport_scale = 2.0;
+    CTX.ui_scale = 2.0;
   } else {
-    CTX.viewport_scale = 1.0;
+    CTX.ui_scale = 1.0;
   }
 
   // kick off animation

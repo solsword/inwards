@@ -20,6 +20,8 @@ export var MENU_PALETTE = {
   "selected_button": "#88c",
 };
 
+var BLOCK_BORDER = 0.05;
+
 export function interp_color(original, proportion, target) {
   // Interpolates two colors according to the given proportion. Accepts and
   // returns RGB hex strings.
@@ -61,7 +63,6 @@ export function world_pos(ctx, vpos) {
   var result = [vpos[0], vpos[1]];
   result[0] -= ctx.middle[0];
   result[1] -= ctx.middle[1];
-  result[1] = -result[1];
   result[0] /= ctx.viewport_scale;
   result[1] /= ctx.viewport_scale;
   result[0] += ctx.viewport_center[0];
@@ -73,7 +74,6 @@ export function view_pos(ctx, wpos) {
   var result = [wpos[0], wpos[1]];
   result[0] -= ctx.viewport_center[0];
   result[1] -= ctx.viewport_center[1];
-  result[1] = -result[1];
   result[0] *= ctx.viewport_scale;
   result[1] *= ctx.viewport_scale;
   result[0] += ctx.middle[0];
@@ -98,32 +98,10 @@ export function draw_world(ctx, wld, trace) {
   ctx.textBaseline = "middle";
   ctx.font = Math.floor(FONT_SIZE * ctx.viewport_scale) + "px " + FONT_FACE;
 
-  let target_loc = undefined;
-  let target_pid = undefined;
-  let depth_adjust = 0;
-  for (let i = trace.length - 1; i >= 0; --i) {
-    if (trace[i] == undefined) {
-      // TODO: Hallucinate parents here?
-      break;
-    }
-    if (target_pid != undefined) {
-      depth_adjust += 1;
-      let lpos = target_loc[0];
-      let sf = world.get_scale_factor(wld, trace[i][1], lpos);
-      let new_edges = [
-        world.outer_coord(edges[0], lpos[0], sf),
-        world.outer_coord(edges[1], lpos[1], sf),
-        world.outer_coord(edges[2], lpos[0], sf),
-        world.outer_coord(edges[3], lpos[1], sf)
-      ];
-      edges = new_edges;
-    }
-    target_loc = trace[i];
-    target_pid = target_loc[1];
-  }
+  let tcx = world.find_context(wld, edges, trace);
 
   // Call recursive drawing function.
-  draw_panes(ctx, wld, target_pid, edges, -depth_adjust);
+  draw_panes(ctx, wld, tcx[0], tcx[1], -tcx[2]);
 }
 
 export function draw_panes(ctx, wld, target_pid, edges, depth) {
@@ -150,19 +128,37 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
   for (let x = 0; x < world.PANE_SIZE; ++x) {
     for (let y = 0; y < world.PANE_SIZE; ++y) {
       let block = world.block_at(pane, [x, y]);
-      ctx.fillStyle = blocks.color(block);
+
+      // Edge fills the whole block
+      ctx.fillStyle = blocks.accent_color(block);
+      ctx.lineWidth = 0.5;
       ctx.strokeStyle = blocks.accent_color(block);
-      // TODO: Stroke width?
       ctx.beginPath();
       ctx.moveTo(x_(x), y_(y));
       ctx.lineTo(x_(x+1), y_(y));
       ctx.lineTo(x_(x+1), y_(y+1));
       ctx.lineTo(x_(x), y_(y+1));
       ctx.closePath();
-      ctx.fill();
       ctx.stroke();
+      ctx.fill();
+
+      // Center fills the rest
+      ctx.fillStyle = blocks.color(block);
+      ctx.beginPath();
+      ctx.moveTo(x_(x + BLOCK_BORDER), y_(y + BLOCK_BORDER));
+      ctx.lineTo(x_(x+1 - BLOCK_BORDER), y_(y + BLOCK_BORDER));
+      ctx.lineTo(x_(x+1 - BLOCK_BORDER), y_(y+1 - BLOCK_BORDER));
+      ctx.lineTo(x_(x + BLOCK_BORDER), y_(y+1 - BLOCK_BORDER));
+      ctx.closePath();
+      ctx.fill();
     }
   }
+
+  // Draw entities:
+  for (let eid of Object.keys(pane.entities)) {
+    draw_entity(ctx, wld, eid, edges);
+  }
+
   // Recursively draw inlays:
   for (let ins of pane.inlays) {
     let sf = ins.size / world.PANE_SIZE;
@@ -172,8 +168,41 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
       world.inner_coord(edges[2], ins.at[0], sf),
       world.inner_coord(edges[3], ins.at[1], sf),
     ];
-    draw_panes(wld, ins.id, inner_edges, depth + 1);
+    draw_panes(ctx, wld, ins.id, inner_edges, depth + 1);
   }
+}
+
+export function draw_entity(ctx, wld, eid, edges) {
+  // Draws the entity from the given world with the given ID, using the given
+  // edges to contextualize its position.
+
+  let ew = edges[2] - edges[0];
+  let eh = edges[3] - edges[1];
+  let hscale = ctx.cwidth / ew;
+  let vscale = ctx.cheight / eh;
+
+  function x_(x) { return (x - edges[0]) * hscale; }
+  function y_(y) { return (y - edges[1]) * vscale; }
+
+  let entity = wld.entities[eid];
+
+  let ex = x_(entity.pos[0]);
+  let ey = y_(entity.pos[1]);
+
+  ctx.beginPath();
+  ctx.ellipse(
+    ex,
+    ey,
+    entity.size * hscale / 2,
+    entity.size * vscale / 2,
+    0,
+    0,
+    2*Math.PI
+  );
+  ctx.strokeStyle = entity.appearance.border_color;
+  ctx.fillStyle = entity.appearance.color;
+  ctx.stroke();
+  ctx.fill();
 }
 
 // Draws an edge of the given shape with the given center point, radius, and

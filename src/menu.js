@@ -97,7 +97,7 @@ export function auto_text_layout(ctx, text, line_height, width) {
   // Conforms to the given width if one is supplied; otherwise tries
   // NARROW_TEXT_WIDTH first, followed by MEDIUM_TEXT_WIDTH and then
   // WIDE_TEXT_WIDTH if an attempt results in too many lines.
-  var lh = line_height * ctx.viewport_scale;
+  var lh = line_height * ctx.ui_scale;
   if (width != undefined) {
     var gw = width * CANVAS_SIZE[0];
     var given = flow_text(ctx, text, gw);
@@ -230,7 +230,7 @@ export function BaseMenu(ctx, pos, shape, style) {
 
 BaseMenu.prototype.set_font = function (ctx) {
   ctx.font = (
-    (this.style.font_size * ctx.viewport_scale) + "px "
+    (this.style.font_size * ctx.ui_scale) + "px "
   + this.style.font_face
   );
   ctx.fillStyle = this.style.text_color;
@@ -254,14 +254,14 @@ BaseMenu.prototype.abspos = function () {
     result[0] = this.pos.left;
   } else if (this.pos.hasOwnProperty("right") && this.pos.right != undefined){
     if (this.shape.hasOwnProperty("width") && this.shape.width != undefined) {
-      var w = this.shape.width * this.ctx.viewport_scale;
+      var w = this.shape.width * this.ctx.ui_scale;
       result[0] = this.ctx.cwidth - this.pos.right - w;
     } else {
       result[0] = this.pos.right; // auto-width -> symmetrical
     }
   } else {
     if (this.shape.hasOwnProperty("width") && this.shape.width != undefined) {
-      var w = this.shape.width * this.ctx.viewport_scale;
+      var w = this.shape.width * this.ctx.ui_scale;
       result[0] = (this.ctx.cwidth - w)/2; // centered
     } else {
       result[0] = 40; // no info default
@@ -277,7 +277,7 @@ BaseMenu.prototype.abspos = function () {
       this.shape.hasOwnProperty("height")
    && this.shape.height != undefined
     ) {
-      var h = this.shape.height * this.ctx.viewport_scale;
+      var h = this.shape.height * this.ctx.ui_scale;
       result[1] = this.ctx.cheight - this.pos.bottom - h;
     } else {
       result[1] = this.pos.bottom; // auto-height -> symmetrical
@@ -287,7 +287,7 @@ BaseMenu.prototype.abspos = function () {
       this.shape.hasOwnProperty("height")
    && this.shape.height != undefined
     ) {
-      var h = this.shape.height * this.ctx.viewport_scale;
+      var h = this.shape.height * this.ctx.ui_scale;
       result[1] = (this.ctx.cwidth - h)/2; // centered
     } else {
       result[1] = 40; // no info default
@@ -302,7 +302,7 @@ BaseMenu.prototype.absshape = function () {
   var ap = this.abspos();
   var result = [ 0, 0 ];
   if (this.shape.hasOwnProperty("width") && this.shape.width != undefined) {
-    result[0] = this.shape.width * this.ctx.viewport_scale;
+    result[0] = this.shape.width * this.ctx.ui_scale;
   } else {
     if (this.pos.hasOwnProperty("right") && this.pos.right != undefined) {
       result[0] = (this.ctx.cwidth - this.pos.right) - ap[0];
@@ -311,7 +311,7 @@ BaseMenu.prototype.absshape = function () {
     }
   }
   if (this.shape.hasOwnProperty("height") && this.shape.height != undefined) {
-    result[1] = this.shape.height * this.ctx.viewport_scale;
+    result[1] = this.shape.height * this.ctx.ui_scale;
   } else {
     if (this.pos.hasOwnProperty("bottom") && this.pos.bottom != undefined) {
       result[1] = (this.ctx.cheight - this.pos.bottom) - ap[1];
@@ -483,7 +483,7 @@ export function Dialog(ctx, pos, shape, style, text, buttons) {
     this.shape.height = (
       this.text.height
     + 2 * this.style.padding
-    + this.style.buttons_height * this.ctx.viewport_scale
+    + this.style.buttons_height * this.ctx.ui_scale
     // TODO: Correct button scaling!
     );
   }
@@ -502,13 +502,13 @@ Dialog.prototype.tap = function (pos, hit) {
   var rpos = this.rel_pos(pos);
   var bpos = [
     rpos[0],
-    rpos[1] - (as[1] - this.style.buttons_height * this.ctx.viewport_scale
+    rpos[1] - (as[1] - this.style.buttons_height * this.ctx.ui_scale
     )
   ];
   var sel = trigger_horizontal_buttons(
     bpos,
     this.buttons,
-    this.style.buttons_height * this.ctx.viewport_scale,
+    this.style.buttons_height * this.ctx.ui_scale,
     as[0],
     this.style.buttons_padding,
     this.style.button_width
@@ -538,7 +538,7 @@ Dialog.prototype.draw = function (ctx) {
     [ ap[0], ap[1] + as[1] - this.style.buttons_height ],
     this.style,
     this.buttons,
-    this.style.buttons_height * this.ctx.viewport_scale,
+    this.style.buttons_height * this.ctx.ui_scale,
     as[0],
     this.style.buttons_padding,
     this.style.button_width,
@@ -626,7 +626,7 @@ ToggleMenu.prototype.draw = function (ctx) {
   ctx.textBaseline = "middle";
   ctx.fillStyle = this.style.text_color;
   ctx.font = (
-    (this.style.font_size * ctx.viewport_scale) + "px "
+    (this.style.font_size * ctx.ui_scale) + "px "
   + this.style.font_face
   );
   var center = this.center();
@@ -680,15 +680,15 @@ WordList.prototype.tap = function (pos, hit) {
   var m = this.ctx.measureText(this.style.prefix);
   var link_min = this.style.padding;
   var link_max = link_min + m.width;
-  var sb_min = as[0] - this.style.scrollbar_width * this.ctx.viewport_scale;
+  var sb_min = as[0] - this.style.scrollbar_width * this.ctx.ui_scale;
   var sb_max = as[0];
   if (rp[0] >= link_min && rp[0] <= link_max) { // hit on a word arrow
-    var lh = this.style.line_height * this.ctx.viewport_scale;
+    var lh = this.style.line_height * this.ctx.ui_scale;
     // list-relative y position:
     var lry = rp[1] + this.scroll_position;
     // fractional y position:
     var fry = lry % lh;
-    if (fry > (this.style.font_size * this.ctx.viewport_scale) + 3) {
+    if (fry > (this.style.font_size * this.ctx.ui_scale) + 3) {
       // between-lines hit (text alignment is top)
       return;
     }
@@ -707,7 +707,7 @@ WordList.prototype.tap = function (pos, hit) {
     }
   } else if (rp[0] >= sb_min && rp[0] <= sb_max) {
     // hit on the scrollbar
-    var lh = this.style.line_height * this.ctx.viewport_scale;
+    var lh = this.style.line_height * this.ctx.ui_scale;
     var sl = this.scroll_limits();
     this.scroll_position =  sl[0] + (sl[1] - sl[0]) * (rp[1] / as[1]);
   }
@@ -715,7 +715,7 @@ WordList.prototype.tap = function (pos, hit) {
 
 WordList.prototype.scroll_limits = function() {
   var as = this.absshape();
-  var lh = this.style.line_height * this.ctx.viewport_scale;
+  var lh = this.style.line_height * this.ctx.ui_scale;
   var min_scroll = -this.style.padding;
   var max_scroll = this.words.length * lh - (as[1] - 2 * this.style.padding);
   return [ min_scroll, max_scroll ];
@@ -729,14 +729,14 @@ WordList.prototype.hover = function (path, hit) {
   var rp = this.rel_pos(pos);
   var as = this.absshape();
 
-  var sb_min = as[0] - this.style.scrollbar_width * this.ctx.viewport_scale;
+  var sb_min = as[0] - this.style.scrollbar_width * this.ctx.ui_scale;
   var sb_max = as[0];
   if (
     this.scroll_drag
  || (this.press_last == undefined && rp[0] >= sb_min && rp[0] <= sb_max)
   ) { // hit on the scrollbar
     this.scroll_drag = true;
-    var lh = this.style.line_height * this.ctx.viewport_scale;
+    var lh = this.style.line_height * this.ctx.ui_scale;
     var sl = this.scroll_limits();
     this.scroll_position =  sl[0] + (sl[1] - sl[0]) * (rp[1] / as[1]);
   } else { // hit elsewhere in the window
@@ -765,7 +765,7 @@ WordList.prototype.draw = function(ctx) {
   // absolute position/size:
   var ap = this.abspos();
   var as = this.absshape();
-  var lh = this.style.line_height * ctx.viewport_scale;
+  var lh = this.style.line_height * ctx.ui_scale;
 
   // adjust scroll position
   var min_scroll = -this.style.padding;
@@ -790,7 +790,7 @@ WordList.prototype.draw = function(ctx) {
   }
 
   // draw scrollbar:
-  var sbw = this.style.scrollbar_width * ctx.viewport_scale;
+  var sbw = this.style.scrollbar_width * ctx.ui_scale;
   ctx.fillStyle = this.style.button_color;
   ctx.strokeStyle = this.style.button_border_color;
   ctx.rect(ap[0] + as[0] - sbw, ap[1], sbw, as[1]);
