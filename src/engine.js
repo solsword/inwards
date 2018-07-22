@@ -45,6 +45,9 @@ function draw_frame(now) {
   CTX.viewport_center = THE_PLAYER.pos.slice();
   CTX.viewport_scale = Math.min(CTX.cwidth, CTX.cheight) / world.PANE_SIZE;
 
+  // Player controls:
+  input.player_controls(THE_PLAYER);
+
   // Physics updates:
   physics.tick_world(CURRENT_WORLD, THE_PLAYER.trace);
 

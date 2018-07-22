@@ -14,17 +14,19 @@ BLOCK_PROGRESSIONS[blocks.by_id("点滅㈢")] = blocks.by_id("点滅㈠");
 // Size of region around an entity that counts for detecting nearby terrain.
 export var ENTITY_BORDER_SIZE = 0.1;
 
+export var TIME_DILATION = 0.1;
+
 // Gravity in blocks/millisecond
-export var GRAVITY = 9.81 / 1000.0;
+export var GRAVITY = 1 / 1000.0;
 
 // Buoyancy in blocks/millisecond (of course that's not how it works)
-export var BUOYANCY = 4 / 1000.0;
+export var BUOYANCY = 0.08 / 1000.0;
 
 // Buoyancy for swimming non-fish
-export var SWIMMER_BUOYANCY = 0.5 / 1000.0;
+export var SWIMMER_BUOYANCY = 0.01 / 1000.0;
 
 // Velocity cap in blocks/millisecond
-export var MAX_VEOCITY = 60 / 1000.0;
+export var MAX_VEOCITY = 120 / 1000.0;
 
 // Number of steps to try when a collision is detected
 export var COLLISION_INTERP_STEPS = 6;
@@ -63,6 +65,8 @@ export function tick_world(wld, trace) {
   } else {
     elapsed = now - LAST_TICK_TIME;
   }
+
+  elapsed *= TIME_DILATION;
 
   let tick_blocks = false;
   if (
@@ -119,20 +123,24 @@ export function tick_entity(wld, pane, entity, elapsed) {
   // control multipliers:
   let horiz_control = 1;
   let vert_control = 1;
+  let jump_control = 1;
 
   // environmental forces
   if (surroundings.in_wall) {
     horiz_control = 0;
     vert_control = 0;
+    jump_control = 0;
     entity.vel = [0, 0];
   } else if (state == "falling") {
     entity.vel[1] += elapsed * GRAVITY;
     horiz_control = 0.2;
     vert_control = 0.2;
+    jump_control = 0;
   } else if (state == "sliding") {
     entity.vel[1] += elapsed * GRAVITY/2;
     entity.vel[1] /= 2;
     entity.vel[0] = 0;
+    jump_control = 0.6;
   } else if (state == "swimming") {
     entity.vel = [0, 0];
     if (!entity.capabilities.neutral_buoyancy) {
@@ -140,6 +148,7 @@ export function tick_entity(wld, pane, entity, elapsed) {
     }
     horiz_control = 0.8
     vert_control = 0.8
+    jump_control = 0.1;
   } else if (state == "floating") {
     entity.vel = [0, 0];
     let submerged = submerged_portion(pane, entity);
@@ -151,18 +160,22 @@ export function tick_entity(wld, pane, entity, elapsed) {
       horiz_control = 0.4;
     }
     vert_control = 0.2;
+    jump_control = 0.1;
   } else if (state == "climbing") {
     horiz_control = 0.8;
     vert_control = 0.8;
-    entity.vel = [0, 0];
+    jump_control = 0.8;
+    entity.vel[0] = 0;
+    if (entity.vel[1] > 0) { entity.vel[1] = 0; }
   } else if (state == "slipping") {
     horiz_control = 0.8;
     vert_control = 0;
-    entity.vel[1] = 0;
+    if (entity.vel[1] > 0) { entity.vel[1] = 0; }
   } else if (state == "standing") {
     // TODO: Velocity buildup for running?
     vert_control = 0;
-    entity.vel = [0, 0];
+    entity.vel[0] = 0;
+    if (entity.vel[1] > 0) { entity.vel[1] = 0; }
   }
 
   // control forces:
@@ -181,13 +194,17 @@ export function tick_entity(wld, pane, entity, elapsed) {
   entity.vel[0] += cv[0] * elapsed;
   entity.vel[1] += cv[1] * elapsed;
 
+  if (entity.ctl.jump) {
+    entity.vel[1] -= entity.jump * elapsed * jump_control;
+  }
+
   // cap velocity
   entity.vel = crop_velocity(entity.vel, MAX_VEOCITY);
 
   // apply velocity
   let newpos = [
-    entity.pos[0] + entity.vel[0],
-    entity.pos[1] + entity.vel[1]
+    entity.pos[0] + entity.vel[0] * elapsed,
+    entity.pos[1] + entity.vel[1] * elapsed
   ];
 
   let best_valid = entity.pos.slice();
@@ -196,8 +213,8 @@ export function tick_entity(wld, pane, entity, elapsed) {
     let adj = 0.25;
     for (let i = 0; i < COLLISION_INTERP_STEPS; ++i) {
       let newpos = [
-        entity.pos[0] + entity.vel[0] * guess,
-        entity.pos[1] + entity.vel[1] * guess
+        entity.pos[0] + entity.vel[0] * elapsed * guess,
+        entity.pos[1] + entity.vel[1] * elapsed * guess
       ];
       if (!overlaps_wall(wld, pane, entity, newpos)) {
         best_valid = newpos;

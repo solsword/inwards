@@ -6,6 +6,17 @@ var KEY_COMMANDS = {};
 // Mouse button state
 var MOUSE_BUTTON_STATE = {};
 
+var KEY_CONTROLS = {
+  "up": ["arrowup", "w", "8"],
+  "left": ["arrowleft", "a", "4"],
+  "down": ["arrowdown", "s", "5"],
+  "right": ["arrowright", "d", "6"],
+  "jump": [" ", "enter"],
+  "interact": ["e"],
+}
+
+export var KEYS_DOWN = {};
+
 export function canvas_position_of_event(ctx, e) {
   // Figures out the canvas position of a mouse or touch event.
   if (e.touches) {
@@ -159,6 +170,11 @@ function handle_key(ctx, key, e) {
   if (cmd) {
     cmd(ctx, key, e);
   }
+  KEYS_DOWN[key.toLowerCase()] = true;
+}
+
+function handle_keyup(key) {
+  KEYS_DOWN[key.toLowerCase()] = false;
 }
 
 export function bind_events(document, ctx) {
@@ -185,4 +201,56 @@ export function bind_events(document, ctx) {
   document.onkeydown = function (e) {
     handle_key(ctx, e.key, e);
   }
+
+  document.onkeyup = function (e) {
+    handle_keyup(e.key);
+  }
+}
+
+export function player_controls(entity) {
+  // reset control state:
+  entity.ctl.x = 0;
+  entity.ctl.y = 0;
+  entity.ctl.jump = false;
+  entity.ctl.interact = false;
+  entity.ctl.special = undefined;
+
+  // check keys:
+  for (let key of KEY_CONTROLS["up"]) {
+    if (KEYS_DOWN[key]) {
+      entity.ctl.y -= 1;
+      break;
+    }
+  }
+  for (let key of KEY_CONTROLS["down"]) {
+    if (KEYS_DOWN[key]) {
+      entity.ctl.y += 1;
+      break;
+    }
+  }
+  for (let key of KEY_CONTROLS["left"]) {
+    if (KEYS_DOWN[key]) {
+      entity.ctl.x -= 1;
+      break;
+    }
+  }
+  for (let key of KEY_CONTROLS["right"]) {
+    if (KEYS_DOWN[key]) {
+      entity.ctl.x += 1;
+      break;
+    }
+  }
+  for (let key of KEY_CONTROLS["jump"]) {
+    if (KEYS_DOWN[key]) {
+      entity.ctl.jump = true;
+      break;
+    }
+  }
+  for (let key of KEY_CONTROLS["interact"]) {
+    if (KEYS_DOWN[key]) {
+      entity.ctl.interact = true;
+      break;
+    }
+  }
+  // TODO: special (using mouse?)
 }

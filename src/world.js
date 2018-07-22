@@ -196,7 +196,14 @@ export function create_entity(wld, id) {
     "pos": [PANE_SIZE/2, PANE_SIZE/2],
     "vel": [0, 0],
     "speed": 1.5 / 1000,
-    "ctl": {"x": 0, "y": 0, "jump": false },
+    "jump": 20 / 1000,
+    "ctl": {
+      "x": 0,
+      "y": 0,
+      "jump": false,
+      "interact": false,
+      "special": undefined,
+    },
     "capabilities": {},
   }
 
