@@ -195,8 +195,11 @@ export function create_entity(wld, id) {
     "trace": [], // TODO: starting position?
     "pos": [PANE_SIZE/2, PANE_SIZE/2],
     "vel": [0, 0],
-    "speed": 1.5 / 1000,
-    "jump": 20 / 1000,
+    "accel": 0.8 / 1000,
+    "hspeed": 21 / 1000,
+    "vspeed": 9 / 1000,
+    "jump": 60 / 1000,
+    "cooldowns": {},
     "ctl": {
       "x": 0,
       "y": 0,
@@ -204,7 +207,9 @@ export function create_entity(wld, id) {
       "interact": false,
       "special": undefined,
     },
-    "capabilities": {},
+    "capabilities": {
+      "climb": true // TODO: Not this?
+    },
   }
 
   wld.entities[id] = result;
@@ -430,4 +435,11 @@ export function find_context(wld, edges, trace) {
     }
   }
   return [target_pid, edges, depth_adjust];
+}
+
+export function is_ready(entity, action) {
+  return (
+    entity.cooldowns[action] <= 0
+ || entity.cooldowns[action] == undefined
+  );
 }

@@ -6,6 +6,8 @@ import * as world from "./world";
 
 export var BLOCK_TICK_DURATION = 1000;
 
+export var JUMP_COOLDOWN = 50;
+
 export var BLOCK_PROGRESSIONS = {};
 BLOCK_PROGRESSIONS[blocks.by_id("点滅㈠")] = blocks.by_id("点滅㈡");
 BLOCK_PROGRESSIONS[blocks.by_id("点滅㈡")] = blocks.by_id("点滅㈢");
@@ -17,7 +19,7 @@ export var ENTITY_BORDER_SIZE = 0.1;
 export var TIME_DILATION = 0.1;
 
 // Gravity in blocks/millisecond
-export var GRAVITY = 1 / 1000.0;
+export var GRAVITY = 0.5 / 1000.0;
 
 // Buoyancy in blocks/millisecond (of course that's not how it works)
 export var BUOYANCY = 0.08 / 1000.0;
@@ -125,32 +127,39 @@ export function tick_entity(wld, pane, entity, elapsed) {
   let vert_control = 1;
   let jump_control = 1;
 
+  for (let c of Object.keys(entity.cooldowns)) {
+    entity.cooldowns[c] -= elapsed;
+    if (entity.cooldowns[c] <= 0) {
+      entity.cooldowns[c] = 0;
+    }
+  }
+
   // environmental forces
+  let h_traction = false;
+  let v_traction = false;
   if (surroundings.in_wall) {
     horiz_control = 0;
     vert_control = 0;
     jump_control = 0;
-    entity.vel = [0, 0];
   } else if (state == "falling") {
     entity.vel[1] += elapsed * GRAVITY;
-    horiz_control = 0.2;
-    vert_control = 0.2;
+    horiz_control = 1.0;
+    vert_control = 0.0;
     jump_control = 0;
   } else if (state == "sliding") {
     entity.vel[1] += elapsed * GRAVITY/2;
     entity.vel[1] /= 2;
-    entity.vel[0] = 0;
     jump_control = 0.6;
   } else if (state == "swimming") {
-    entity.vel = [0, 0];
     if (!entity.capabilities.neutral_buoyancy) {
       entity.vel[1] -= elapsed * SWIMMER_BUOYANCY;
     }
     horiz_control = 0.8
     vert_control = 0.8
     jump_control = 0.1;
+    h_traction = true;
+    v_traction = true;
   } else if (state == "floating") {
-    entity.vel = [0, 0];
     let submerged = submerged_portion(pane, entity);
     if (submerged < 0.5) {
       entity.vel[1] += elapsed * GRAVITY * (1 - 2*submerged);
@@ -161,21 +170,19 @@ export function tick_entity(wld, pane, entity, elapsed) {
     }
     vert_control = 0.2;
     jump_control = 0.1;
+    h_traction = true;
   } else if (state == "climbing") {
     horiz_control = 0.8;
     vert_control = 0.8;
     jump_control = 0.8;
-    entity.vel[0] = 0;
-    if (entity.vel[1] > 0) { entity.vel[1] = 0; }
+    h_traction = true;
+    v_traction = true;
   } else if (state == "slipping") {
     horiz_control = 0.8;
     vert_control = 0;
-    if (entity.vel[1] > 0) { entity.vel[1] = 0; }
   } else if (state == "standing") {
-    // TODO: Velocity buildup for running?
     vert_control = 0;
-    entity.vel[0] = 0;
-    if (entity.vel[1] > 0) { entity.vel[1] = 0; }
+    h_traction = true;
   }
 
   // control forces:
@@ -186,20 +193,51 @@ export function tick_entity(wld, pane, entity, elapsed) {
   let cv = [0, 0]
   if (cm > 0) {
     cv = [
-      (cx / cm) * entity.speed * horiz_control,
-      (cy / cm) * entity.speed * vert_control
+      (cx / cm) * entity.accel * horiz_control,
+      (cy / cm) * entity.accel * vert_control
     ];
+  }
+
+  // nix controls when speed has been achieved:
+  if (Math.abs(entity.vel[0] + cv[0] * elapsed) > entity.hspeed) {
+    cv[0] = 0;
+  }
+  if (Math.abs(entity.vel[1] + cv[1] * elapsed) > entity.vspeed) {
+    cv[1] = 0;
+  }
+
+  // if traction is available, damp velocity
+  if (h_traction && diff_sign(entity.vel[0], cv[0])) {
+    entity.vel[0] /= 2;
+  }
+  if (v_traction && diff_sign(entity.vel[1], cv[1])) {
+    entity.vel[1] /= 2;
   }
 
   entity.vel[0] += cv[0] * elapsed;
   entity.vel[1] += cv[1] * elapsed;
 
-  if (entity.ctl.jump) {
-    entity.vel[1] -= entity.jump * elapsed * jump_control;
+  if (jump_control > 0 && entity.ctl.jump && world.is_ready(entity, "jump")) {
+    entity.cooldowns.jump = JUMP_COOLDOWN;
+    entity.vel[1] -= entity.jump * jump_control;
   }
 
   // cap velocity
   entity.vel = crop_velocity(entity.vel, MAX_VEOCITY);
+
+  // respect blocked directions
+  if (surroundings.blocked.up && entity.vel[1] < 0) {
+    entity.vel[1] = 0;
+  }
+  if (surroundings.blocked.down && entity.vel[1] > 0) {
+    entity.vel[1] = 0;
+  }
+  if (surroundings.blocked.left && entity.vel[0] < 0) {
+    entity.vel[0] = 0;
+  }
+  if (surroundings.blocked.right && entity.vel[0] > 0) {
+    entity.vel[0] = 0;
+  }
 
   // apply velocity
   let newpos = [
@@ -338,9 +376,6 @@ export function movement_state(entity, surroundings) {
   return result;
 }
 
-export function detect_block_collisions(pane, entity) {
-}
-
 export function detect_surroundings(wld, pane, entity) {
   // Detects an entity's surroundings, including nearby objects on all sides
   // and any current overlaps. The resulting object uses the following flags:
@@ -359,7 +394,14 @@ export function detect_surroundings(wld, pane, entity) {
   //
   //   smooth_above - there's a wall above, but it's smooth
   //   climable_above - there's a non-smooth wall above
-  let result = {};
+  //
+  // It also includes a "blocked" key that indicates whether the entity is
+  // blocked from moving "up," "left," "right," and/or "down."
+
+  let result = {
+    "blocked": {}
+  };
+
   let ex = entity.pos[0];
   let ey = entity.pos[1];
   let sz = entity.size;
@@ -371,13 +413,13 @@ export function detect_surroundings(wld, pane, entity) {
     wld,
     pane,
     [
-      ex - radius - pad,
+      ex - radius,
       ey - radius - pad,
-      ex + radius + pad, 
+      ex + radius, 
       ey - radius
     ]
   );
-  let below = blocks_in_bb( // note this one alone does not extend sideways
+  let below = blocks_in_bb(
     wld,
     pane,
     [
@@ -392,9 +434,9 @@ export function detect_surroundings(wld, pane, entity) {
     pane,
     [
       ex - radius - pad,
-      ey - radius - pad,
+      ey - radius,
       ex - radius, 
-      ey + radius + pad
+      ey + radius
     ]
   );
   let right = blocks_in_bb(
@@ -402,9 +444,9 @@ export function detect_surroundings(wld, pane, entity) {
     pane,
     [
       ex + radius,
-      ey - radius - pad,
+      ey - radius,
       ex + radius + pad, 
-      ey + radius + pad
+      ey + radius
     ]
   );
   let on = blocks_in_bb(
@@ -421,6 +463,10 @@ export function detect_surroundings(wld, pane, entity) {
   for (let b of on) {
     if (blocks.is_solid(b)) {
       result["in_wall"] = true;
+      result.blocked["up"] = true;
+      result.blocked["down"] = true;
+      result.blocked["left"] = true;
+      result.blocked["right"] = true;
     }
     if (blocks.is_liquid(b)) {
       result["in_liquid"] = true;
@@ -434,6 +480,7 @@ export function detect_surroundings(wld, pane, entity) {
   for (let b of below) {
     if (blocks.is_solid(b)) {
       result["on_floor"] = true;
+      result.blocked["down"] = true;
     }
     if (!blocks.is_slippery(b)) {
       only_slippery = false;
@@ -452,6 +499,9 @@ export function detect_surroundings(wld, pane, entity) {
         smooth_only = false;
       }
     }
+    if (blocks.is_solid(b)) {
+      result.blocked["left"] = true;
+    }
   }
   for (let b of right) {
     if (blocks.is_solid(b) || blocks.is_climable(b)) {
@@ -459,6 +509,9 @@ export function detect_surroundings(wld, pane, entity) {
       if (!blocks.is_smooth(b)) {
         smooth_only = false;
       }
+    }
+    if (blocks.is_solid(b)) {
+      result.blocked["right"] = true;
     }
   }
   if (any_climable) {
@@ -477,6 +530,9 @@ export function detect_surroundings(wld, pane, entity) {
       if (!blocks.is_smooth(b)) {
         smooth_only = false;
       }
+    }
+    if (blocks.is_solid(b)) {
+      result.blocked["up"] = true;
     }
   }
   if (any_climable) {
@@ -500,9 +556,13 @@ export function blocks_in_bb(wld, pane, bb, depth) {
     return [ blocks.CHAOS ];
   }
   let result = [];
+  // TODO: Outside/inside blocks!
   for (let x = Math.floor(bb[0]); x<= Math.floor(bb[2]); ++x) {
     for (let y = Math.floor(bb[1]); y<= Math.floor(bb[3]); ++y) {
-      result.push(world.block_at(pane, [x, y]));
+      let b = world.block_at(pane, [x, y]);
+      if (b != undefined) {
+        result.push(b);
+      }
     }
   }
   for (let inl of pane.inlays) {
@@ -530,4 +590,13 @@ export function blocks_in_bb(wld, pane, bb, depth) {
 export function submerged_portion(pane, entity) {
   // TODO:
   return 1;
+}
+
+export function diff_sign(x, y) {
+  return (
+    x < 0 && y > 0
+ || x > 0 && y < 0
+ || x == 0 && y != 0
+ || x != 0 && y == 0
+  );
 }
