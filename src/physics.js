@@ -6,7 +6,7 @@ import * as world from "./world";
 
 export var BLOCK_TICK_DURATION = 1000;
 
-export var JUMP_COOLDOWN = 50;
+export var JUMP_COOLDOWN = 150;
 
 export var BLOCK_PROGRESSIONS = {};
 BLOCK_PROGRESSIONS[blocks.by_id("点滅㈠")] = blocks.by_id("点滅㈡");
@@ -122,11 +122,7 @@ export function tick_entity(wld, pane, entity, elapsed) {
   let surroundings = detect_surroundings(wld, pane, entity);
   let state = movement_state(entity, surroundings);
 
-  // control multipliers:
-  let horiz_control = 1;
-  let vert_control = 1;
-  let jump_control = 1;
-
+  // update cooldowns:
   for (let c of Object.keys(entity.cooldowns)) {
     entity.cooldowns[c] -= elapsed;
     if (entity.cooldowns[c] <= 0) {
@@ -134,9 +130,14 @@ export function tick_entity(wld, pane, entity, elapsed) {
     }
   }
 
-  // environmental forces
+  // control multipliers:
+  let horiz_control = 1;
+  let vert_control = 1;
+  let jump_control = 1;
   let h_traction = false;
   let v_traction = false;
+
+  // environmental forces
   if (surroundings.in_wall) {
     horiz_control = 0;
     vert_control = 0;
@@ -218,8 +219,10 @@ export function tick_entity(wld, pane, entity, elapsed) {
   entity.vel[1] += cv[1] * elapsed;
 
   if (jump_control > 0 && entity.ctl.jump && world.is_ready(entity, "jump")) {
+    let jv = jump_vector(surroundings, entity.ctl);
     entity.cooldowns.jump = JUMP_COOLDOWN;
-    entity.vel[1] -= entity.jump * jump_control;
+    entity.vel[0] += entity.jump * jv[0] * jump_control;
+    entity.vel[1] += entity.jump * jv[1] * jump_control;
   }
 
   // cap velocity
@@ -283,6 +286,44 @@ export function crop_velocity(vel, cap) {
     vel[1] = (y / vlen) * cap;
   }
   return vel;
+}
+
+export function unit_vector(pis) {
+  return [ Math.cos(Math.PI * pis), -Math.sin(Math.PI * pis) ];
+}
+
+export function jump_vector(surroundings, ctl) {
+  if (surroundings.blocked.up) {
+    if (ctl.x > 0) {
+      return [1, 0];
+    } else if (ctl.x < 0) {
+      return [-1, 0];
+    } else {
+      return [0, 1];
+    }
+  } else if (surroundings.blocked.down) {
+    if (ctl.x > 0) {
+      return unit_vector(0.45);
+    } else if (ctl.x < 0) {
+      return unit_vector(0.55);
+    } else {
+      return [0, -1];
+    }
+  } else {
+    if (surroundings.blocked.left && !surroundings.blocked.right) {
+      if (ctl.x < 0) {
+        return unit_vector(0.35);
+      } else {
+        return unit_vector(0.3);
+      }
+    } else if (surroundings.blocked.right && !surroundings.blocked.left) {
+      if (ctl.x > 0) {
+        return unit_vector(0.65);
+      } else {
+        return unit_vector(0.7);
+      }
+    }
+  }
 }
 
 export function overlaps_wall(wld, pane, entity, pos) {
