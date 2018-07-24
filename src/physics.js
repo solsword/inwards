@@ -16,6 +16,7 @@ BLOCK_PROGRESSIONS[blocks.by_id("点滅㈢")] = blocks.by_id("点滅㈠");
 // Size of region around an entity that counts for detecting nearby terrain.
 export var ENTITY_BORDER_SIZE = 0.1;
 
+// Modifies elapsed time to slow down in-game time relative to real time.
 export var TIME_DILATION = 0.1;
 
 // Gravity in blocks/millisecond
@@ -33,24 +34,42 @@ export var MAX_VEOCITY = 120 / 1000.0;
 // Number of steps to try when a collision is detected
 export var COLLISION_INTERP_STEPS = 6;
 
-export function touches(bb1, bb2) {
-  // Returns true if the given bounding boxes touch each other.
+export function overlap(s1, e1, s2, e2) {
+  // Returns the amount of overlap between two line segments, given as start1,
+  // end1, start2, end2.
+  if (s1 >= s2) {
+    return Math.max(0, Math.min(e1 - s1, e2 - s1));
+  } else {
+    return Math.max(0, Math.min(e1 - s2, e2 - s2));
+  }
+}
+
+export function bb_overlap(bb1, bb2) {
+  // Returns the area of overlap between the given bounding boxes, or 0 if they
+  // don't overlap.
   // Bounding box format is an array of four numbers specifying (left, top),
   // (right, bottom) coordinates in that order. Top and left coordinates are
   // smaller than bottom and right coordinates.
-  let l1 = bb1[0];
-  let t1 = bb1[1];
-  let r1 = bb1[2];
-  let b1 = bb1[3];
-  let l2 = bb2[0];
-  let t2 = bb2[1];
-  let r2 = bb2[2];
-  let b2 = bb2[3];
-  return !(
-    r1 < l2
- || l1 > r2
- || t1 > b2
- || b1 < t2
+  return overlap(
+    bb1[0],
+    bb1[2],
+    bb2[0],
+    bb2[2]
+  ) * overlap(
+    bb1[1],
+    bb1[3],
+    bb2[1],
+    bb2[3]
+  );
+}
+
+export function in_bb(pos, bb) {
+  // Returns true if the given position is in the given bounding box.
+  return (
+    pos[0] >= bb[0]
+ && pos[0] <= bb[2]
+ && pos[1] >= bb[1]
+ && pos[1] <= bb[3]
   );
 }
 
@@ -80,7 +99,7 @@ export function tick_world(wld, trace) {
 
   let tcx = world.find_context(wld, [0, 0, 0, 0], trace);
 
-  tick_panes(wld, elapsed, tcx[0], tick_blocks, -tcx[2]);
+  tick_panes(wld, elapsed, tcx[0], tick_blocks, -tcx[3]);
 
   LAST_TICK_TIME = now;
 }
@@ -119,7 +138,23 @@ export function tick_panes(wld, elapsed, target_pid, tick_blocks, depth) {
 }
 
 export function tick_entity(wld, pane, entity, elapsed) {
-  let surroundings = detect_surroundings(wld, pane, entity);
+  let ex = entity.pos[0];
+  let ey = entity.pos[1];
+  let radius = entity.size/2 * entity.scale;
+
+  let ebox = [
+    ex - radius,
+    ey - radius,
+    ex + radius,
+    ey + radius
+  ];
+  let tcx = world.find_context(wld, ebox, entity.trace);
+  let cxpane = wld.panes[tcx[0]];
+  let cxbox = tcx[1];
+  let cxscale = tcx[2];
+  let cxdepth = tcx[3];
+
+  let surroundings = detect_surroundings(wld, cxpane, cxbox, -cxdepth);
   let state = movement_state(entity, surroundings);
 
   // update cooldowns:
@@ -142,6 +177,19 @@ export function tick_entity(wld, pane, entity, elapsed) {
     horiz_control = 0;
     vert_control = 0;
     jump_control = 0;
+    // push out of the wall
+    if (!surroundings.blocked.above) {
+      entity.vel[1] -= 1 * elapsed;
+    }
+    if (!surroundings.blocked.below) {
+      entity.vel[1] += 1 * elapsed;
+    }
+    if (!surroundings.blocked.left) {
+      entity.vel[0] -= 1 * elapsed;
+    }
+    if (!surroundings.blocked.right) {
+      entity.vel[0] += 1 * elapsed;
+    }
   } else if (state == "falling") {
     entity.vel[1] += elapsed * GRAVITY;
     horiz_control = 1.0;
@@ -243,19 +291,28 @@ export function tick_entity(wld, pane, entity, elapsed) {
   }
 
   // apply velocity
+  let vx = entity.vel[0] * elapsed * entity.scale;
+  let vy = entity.vel[1] * elapsed * entity.scale;
+
+  // zero velocity if we're being pushed out of a wall
+  if (surroundings.in_wall) {
+    entity.vel[0] = 0;
+    entity.vel[1] = 0;
+  }
+
   let newpos = [
-    entity.pos[0] + entity.vel[0] * elapsed,
-    entity.pos[1] + entity.vel[1] * elapsed
+    entity.pos[0] + vx,
+    entity.pos[1] + vy
   ];
 
   let best_valid = entity.pos.slice();
-  if (overlaps_wall(wld, pane, entity, newpos)) {
+  if (!surroundings.in_wall && overlaps_wall(wld, pane, entity, newpos)) {
     let guess = 0.5;
     let adj = 0.25;
     for (let i = 0; i < COLLISION_INTERP_STEPS; ++i) {
       let newpos = [
-        entity.pos[0] + entity.vel[0] * elapsed * guess,
-        entity.pos[1] + entity.vel[1] * elapsed * guess
+        entity.pos[0] + vx * guess,
+        entity.pos[1] + vy * guess
       ];
       if (!overlaps_wall(wld, pane, entity, newpos)) {
         best_valid = newpos;
@@ -266,15 +323,43 @@ export function tick_entity(wld, pane, entity, elapsed) {
       adj /= 2;
     }
     entity.pos = best_valid;
-    // TODO: Just zero velocity in collision direction!
-    entity.vel = [0, 0];
   } else {
     entity.pos = newpos;
   }
 
-  // TODO: Transitions into inlays & out into parent panes
-  // TODO: Do walls in parent panes work properly?
-  // TODO: Jumping!
+  // scaling and pane transitions
+  ex = entity.pos[0];
+  ey = entity.pos[1];
+
+  ebox = [
+    ex - radius,
+    ey - radius,
+    ex + radius,
+    ey + radius
+  ];
+  let new_tcx = world.find_context(wld, ebox, entity.trace);
+  let nxpane = wld.panes[new_tcx[0]];
+  let nxbox = new_tcx[1];
+  let nxpos = [ (nxbox[0] + nxbox[2])/2, (nxbox[1] + nxbox[3])/2 ];
+  let nxscale = new_tcx[2];
+  let nxdepth = new_tcx[3];
+  let tp = trace_pos(wld, nxpane, nxpos, -nxdepth);
+  let retrace = tp[0];
+  let new_pos = tp[1];
+  let scale_diff = tp[2];
+  let new_scale = (scale_diff / nxscale);
+  if (retrace.length > entity.trace.length) {
+    entity.trace = retrace;
+    entity.pos = new_pos;
+    entity.scale = new_scale;
+  } else {
+    let above = entity.trace.slice(0, entity.trace - cxdepth);
+    entity.trace = Array.concat(above, retrace);
+    entity.pos = new_pos;
+    entity.scale = new_scale;
+  }
+  // TODO: rescaling lag?
+  // TODO: Fix partial scaling at borders?
 }
 
 export function crop_velocity(vel, cap) {
@@ -302,26 +387,12 @@ export function jump_vector(surroundings, ctl) {
       return [0, 1];
     }
   } else if (surroundings.blocked.down) {
-    if (ctl.x > 0) {
-      return unit_vector(0.45);
-    } else if (ctl.x < 0) {
-      return unit_vector(0.55);
-    } else {
-      return [0, -1];
-    }
+    return [0, -1];
   } else {
     if (surroundings.blocked.left && !surroundings.blocked.right) {
-      if (ctl.x < 0) {
-        return unit_vector(0.35);
-      } else {
-        return unit_vector(0.3);
-      }
+      return unit_vector(0.35);
     } else if (surroundings.blocked.right && !surroundings.blocked.left) {
-      if (ctl.x > 0) {
-        return unit_vector(0.65);
-      } else {
-        return unit_vector(0.7);
-      }
+      return unit_vector(0.65);
     }
   }
 }
@@ -342,7 +413,7 @@ export function overlaps_wall(wld, pane, entity, pos) {
     ]
   );
 
-  for (let b of overlaps) {
+  for (let b of Object.keys(overlaps)) {
     if (blocks.is_solid(b)) {
       return true;
     }
@@ -417,9 +488,10 @@ export function movement_state(entity, surroundings) {
   return result;
 }
 
-export function detect_surroundings(wld, pane, entity) {
-  // Detects an entity's surroundings, including nearby objects on all sides
-  // and any current overlaps. The resulting object uses the following flags:
+export function detect_surroundings(wld, pane, bbox, depth_adj) {
+  // Detects the surroundings of a bounding box, including nearby objects on
+  // all sides and any current overlaps. The resulting object uses the
+  // following flags:
   //
   //   in_wall - overlaps a solid block
   //   in_liquid - overlaps a liquid block
@@ -438,76 +510,79 @@ export function detect_surroundings(wld, pane, entity) {
   //
   // It also includes a "blocked" key that indicates whether the entity is
   // blocked from moving "up," "left," "right," and/or "down."
+  //
+  // Finally, it includes an "scale" value that indicates the average scale of
+  // inlays that the given bounding box overlaps among those on the given pane.
+  // This value is relative to the given base pane.
 
   let result = {
-    "blocked": {}
+    "blocked": {},
+    "scale": avg_scale(wld, pane, bbox, depth_adj)
   };
 
-  let ex = entity.pos[0];
-  let ey = entity.pos[1];
-  let sz = entity.size;
+  let bxleft = bbox[0];
+  let bxtop = bbox[1];
+  let bxright = bbox[2];
+  let bxbot = bbox[3];
+  let hsz = bxright - bxleft;
+  let vsz = bxbot - bxtop;
+  let hpad = hsz * ENTITY_BORDER_SIZE;
+  let vpad = vsz * ENTITY_BORDER_SIZE;
 
-  let pad = sz * ENTITY_BORDER_SIZE;
-  let radius = sz/2;
-
+  let on = blocks_in_bb(
+    wld,
+    pane,
+    bbox,
+    depth_adj
+  );
   let above = blocks_in_bb(
     wld,
     pane,
     [
-      ex - radius,
-      ey - radius - pad,
-      ex + radius, 
-      ey - radius
-    ]
+      bxleft,
+      bxtop - vpad,
+      bxright, 
+      bxtop
+    ],
+    depth_adj
   );
   let below = blocks_in_bb(
     wld,
     pane,
     [
-      ex - radius,
-      ey + radius,
-      ex + radius, 
-      ey + radius + pad
-    ]
+      bxleft,
+      bxbot,
+      bxright, 
+      bxbot + vpad
+    ],
+    depth_adj
   );
   let left = blocks_in_bb(
     wld,
     pane,
     [
-      ex - radius - pad,
-      ey - radius,
-      ex - radius, 
-      ey + radius
-    ]
+      bxleft - hpad,
+      bxtop,
+      bxleft, 
+      bxbot
+    ],
+    depth_adj
   );
   let right = blocks_in_bb(
     wld,
     pane,
     [
-      ex + radius,
-      ey - radius,
-      ex + radius + pad, 
-      ey + radius
-    ]
-  );
-  let on = blocks_in_bb(
-    wld,
-    pane,
-    [
-      ex - radius,
-      ey - radius,
-      ex + radius,
-      ey + radius
-    ]
+      bxright,
+      bxtop,
+      bxright + hpad, 
+      bxbot
+    ],
+    depth_adj
   );
 
-  for (let b of on) {
+  for (let b of Object.keys(on)) {
     if (blocks.is_solid(b)) {
       result["in_wall"] = true;
-      result.blocked["up"] = true;
-      result.blocked["down"] = true;
-      result.blocked["left"] = true;
-      result.blocked["right"] = true;
     }
     if (blocks.is_liquid(b)) {
       result["in_liquid"] = true;
@@ -518,7 +593,7 @@ export function detect_surroundings(wld, pane, entity) {
   }
 
   let only_slippery = true;
-  for (let b of below) {
+  for (let b of Object.keys(below)) {
     if (blocks.is_solid(b)) {
       result["on_floor"] = true;
       result.blocked["down"] = true;
@@ -533,7 +608,7 @@ export function detect_surroundings(wld, pane, entity) {
 
   let any_climable = false;
   let smooth_only = true;
-  for (let b of left) {
+  for (let b of Object.keys(left)) {
     if (blocks.is_solid(b) || blocks.is_climable(b)) {
       any_climable = true;
       if (!blocks.is_smooth(b)) {
@@ -544,7 +619,7 @@ export function detect_surroundings(wld, pane, entity) {
       result.blocked["left"] = true;
     }
   }
-  for (let b of right) {
+  for (let b of Object.keys(right)) {
     if (blocks.is_solid(b) || blocks.is_climable(b)) {
       any_climable = true;
       if (!blocks.is_smooth(b)) {
@@ -563,9 +638,9 @@ export function detect_surroundings(wld, pane, entity) {
     }
   }
 
-  any_climable = true;
+  any_climable = false;
   smooth_only = true;
-  for (let b of above) {
+  for (let b of Object.keys(above)) {
     if (blocks.is_solid(b) || blocks.is_climable(b)) {
       any_climable = true;
       if (!blocks.is_smooth(b)) {
@@ -594,35 +669,41 @@ export function blocks_in_bb(wld, pane, bb, depth) {
   if (depth == undefined) {
     depth = 0;
   } else if (depth > 2) {
-    return [ blocks.CHAOS ];
+    let result = {};
+    result[blocks.CHAOS] = true;
+    return result;
   }
   let result = [];
-  // TODO: Outside/inside blocks!
   for (let x = Math.floor(bb[0]); x<= Math.floor(bb[2]); ++x) {
     for (let y = Math.floor(bb[1]); y<= Math.floor(bb[3]); ++y) {
       let b = world.block_at(pane, [x, y]);
       if (b != undefined) {
-        result.push(b);
+        result[b] = true;
       }
     }
   }
   for (let inl of pane.inlays) {
-    if (touches(bb, world.inlay_bounds(inl))) {
+    if (bb_overlap(bb, world.inlay_bounds(inl)) > 0) {
       let sf = world.inlay_scale_factor(inl);
-      result = Array.concat(
-        result,
-        blocks_in_bb(
-          wld,
-          wld.panes[inl.id],
-          [
-            world.inner_coord(bb[0], inl.at[0], sf),
-            world.inner_coord(bb[1], inl.at[1], sf),
-            world.inner_coord(bb[2], inl.at[0], sf),
-            world.inner_coord(bb[3], inl.at[1], sf),
-          ],
-          depth + 1
+      for (
+        b
+      of
+        Object.keys(
+          blocks_in_bb(
+            wld,
+            wld.panes[inl.id],
+            [
+              world.inner_coord(bb[0], inl.at[0], sf),
+              world.inner_coord(bb[1], inl.at[1], sf),
+              world.inner_coord(bb[2], inl.at[0], sf),
+              world.inner_coord(bb[3], inl.at[1], sf),
+            ],
+            depth + 1
+          )
         )
-      );
+      ) {
+        result[b] = true;
+      }
     }
   }
   return result;
@@ -640,4 +721,94 @@ export function diff_sign(x, y) {
  || x == 0 && y != 0
  || x != 0 && y == 0
   );
+}
+
+export function avg_scale(wld, pane, bb, depth) {
+  // Returns the average scale of the given bounding box, according to which
+  // inlays it overlaps. For bounding boxes that don't overlap any inlays,
+  // returns 1.0.
+  if (depth == undefined) {
+    depth = 0;
+  }
+  if (depth > 2) {
+    return 1.0;
+  }
+  let bba = (bb[2] - bb[0]) * (bb[3] - bb[1]);
+  let weights = [];
+  let leftovers = 1;
+  let values = [];
+  for (let inl of pane.inlays) {
+    let ov = bb_overlap(bb, world.inlay_bounds(inl));
+    if (ov > 0) {
+      let sf = world.inlay_scale_factor(inl);
+      let sub_scale = avg_scale(
+        wld,
+        wld.panes[inl.id], 
+        [
+            world.inner_coord(bb[0], inl.at[0], sf),
+            world.inner_coord(bb[1], inl.at[1], sf),
+            world.inner_coord(bb[2], inl.at[0], sf),
+            world.inner_coord(bb[3], inl.at[1], sf),
+        ],
+        depth + 1
+      );
+      let w = ov / bba;
+      weights.push(w);
+      leftovers -= w;
+      values.push(sf * sub_scale);
+    }
+  }
+  let result = leftovers;
+  for (let i = 0; i < weights.length; ++i) {
+    result += weights[i] * values[i];
+  }
+  return result;
+}
+
+export function trace_pos(wld, pane, pos, depth) {
+  // Returns a trace to the given position, starting at the given base pane,
+  // along with a relative position in the trace's innermost pane, and a scale
+  // factor relative to the given pane.
+  if (depth == undefined) {
+    depth = 0;
+  }
+  if (depth > 2) {
+    return [[ [undefined, pane.id] ], pos, 1.0];
+  }
+  let subtrace = undefined;
+  let subpos = undefined;
+  let subscale = undefined;
+  let entrance = undefined;
+  let sf = undefined;
+  for (let inl of pane.inlays) {
+    if (in_bb(pos, world.inlay_bounds(inl))) {
+      sf = world.inlay_scale_factor(inl);
+      entrance = inl.at.slice();
+      let tp = trace_pos(
+        wld,
+        wld.panes[inl.id],
+        [
+          world.inner_coord(pos[0], inl.at[0], sf),
+          world.inner_coord(pos[1], inl.at[1], sf)
+        ],
+        depth + 1
+      );
+      subtrace = tp[0];
+      subpos = tp[1];
+      subscale = tp[2];
+      break;
+    }
+  }
+  if (subtrace != undefined) {
+    return [
+      Array.concat(
+        [ [undefined, pane.id], [entrance, subtrace[0][1]] ],
+        subtrace.slice(1,subtrace.length)
+      ),
+      subpos,
+      sf * subscale
+    ];
+  } else {
+    return [[ [undefined, pane.id] ], pos, 1.0];
+  }
 }

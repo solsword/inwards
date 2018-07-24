@@ -101,7 +101,7 @@ export function draw_world(ctx, wld, trace) {
   let tcx = world.find_context(wld, edges, trace);
 
   // Call recursive drawing function.
-  draw_panes(ctx, wld, tcx[0], tcx[1], -tcx[2]);
+  draw_panes(ctx, wld, tcx[0], tcx[1], -tcx[3]);
 }
 
 export function draw_panes(ctx, wld, target_pid, edges, depth) {
@@ -154,11 +154,6 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
     }
   }
 
-  // Draw entities:
-  for (let eid of Object.keys(pane.entities)) {
-    draw_entity(ctx, wld, eid, edges);
-  }
-
   // Recursively draw inlays:
   for (let ins of pane.inlays) {
     let sf = ins.size / world.PANE_SIZE;
@@ -169,6 +164,11 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
       world.inner_coord(edges[3], ins.at[1], sf),
     ];
     draw_panes(ctx, wld, ins.id, inner_edges, depth + 1);
+  }
+
+  // Draw entities:
+  for (let eid of Object.keys(pane.entities)) {
+    draw_entity(ctx, wld, eid, edges);
   }
 }
 
@@ -193,8 +193,8 @@ export function draw_entity(ctx, wld, eid, edges) {
   ctx.ellipse(
     ex,
     ey,
-    entity.size * hscale / 2,
-    entity.size * vscale / 2,
+    entity.size * entity.scale * hscale / 2,
+    entity.size * entity.scale * vscale / 2,
     0,
     0,
     2*Math.PI

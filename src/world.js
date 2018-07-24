@@ -193,6 +193,7 @@ export function create_entity(wld, id) {
     },
     "home": undefined,
     "trace": [], // TODO: starting position?
+    "scale": 1.0,
     "pos": [PANE_SIZE/2, PANE_SIZE/2],
     "vel": [0, 0],
     "accel": 0.8 / 1000,
@@ -225,7 +226,13 @@ export function assign_biome(wld, id, biome) {
 }
 
 export function block_at(pane, pos) {
-  return pane.blocks[pos[0] + pos[1] * PANE_SIZE];
+  let x = pos[0];
+  let y = pos[1];
+  if (x < 0 || y < 0 || x >= PANE_SIZE || y >= PANE_SIZE) {
+    return undefined;
+  } else {
+    return pane.blocks[x + y * PANE_SIZE];
+  }
 }
 
 export function set_block(pane, pos, block_id) {
@@ -387,12 +394,14 @@ export function grid_bb(pos, size) {
 export function find_context(wld, edges, trace) {
   // Finds a pane that's two panes above the end of the given trace,
   // hallucinating extra context when necessary. Returns undefined for empty
-  // traces, otherwise it returns a [pane_id, edges, relative_depth] pair,
-  // where relative_depth will be 2 unless a parent-less pane blocks
-  // hallucination.
+  // traces, otherwise it returns a [pane_id, edges, scale_factor,
+  // relative_depth] array, where relative_depth will be 2 unless a parent-less
+  // pane blocks hallucination. The scale factor is expressed in terms of the
+  // ratio between the scale of the given pane and the discovered pane.
   let target_loc = undefined;
   let target_pid = undefined;
   let depth_adjust = 0;
+  let full_scale = 1.0;
   for (let i = trace.length - 1; i > trace.length - 4; --i) {
     if (trace[i] == undefined) {
       if (target_pid == undefined) {
@@ -406,6 +415,7 @@ export function find_context(wld, edges, trace) {
         let cinl = canonical_inlay(tpane);
         let lpos = cinl.at;
         let sf = get_scale_factor(wld, parent_pane.id, lpos);
+        full_scale *= sf;
         let new_edges = [
           outer_coord(edges[0], lpos[0], sf),
           outer_coord(edges[1], lpos[1], sf),
@@ -420,6 +430,7 @@ export function find_context(wld, edges, trace) {
       depth_adjust += 1;
       let lpos = target_loc[0];
       let sf = get_scale_factor(wld, trace[i][1], lpos);
+      full_scale *= sf;
       let new_edges = [
         outer_coord(edges[0], lpos[0], sf),
         outer_coord(edges[1], lpos[1], sf),
@@ -434,7 +445,7 @@ export function find_context(wld, edges, trace) {
       target_pid = target_loc[1];
     }
   }
-  return [target_pid, edges, depth_adjust];
+  return [target_pid, edges, full_scale, depth_adjust];
 }
 
 export function is_ready(entity, action) {
