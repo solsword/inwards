@@ -1,5 +1,5 @@
 // world.js
-// World generation & representation code
+// World representation code
 
 import * as blocks from "./blocks";
 
@@ -91,9 +91,9 @@ export function init_world(name, seed) {
     "seed": seed,
     "panes": {},
     "entities": {},
+    "zones": {},
     "biomes": {},
-    "next_pane_id": 0,
-    "next_entity_id": 0,
+    "next_id": { "pane": 0, "entity": 0, "zone": 0, "biome": 0 },
   };
   WORLDS[name] = result;
   return result;
@@ -103,33 +103,123 @@ export function by_name(name) {
   return WORLDS[name];
 }
 
-export function create_pane_id(wld) {
-  let result = wld.next_pane_id;
-  wld.next_pane_id += 1;
+export function create_id(wld, typ) {
+  let result = wld.next_id[typ];
+  wld.next_id[typ] += 1;
   return result;
 }
 
-export function create_entity_id(wld) {
-  let result = wld.next_entity_id;
-  wld.next_entity_id += 1;
+export function add_zone_to_biome(wld, zid, bid) {
+  // Adds the given zone to the given biome (both given by ID);
+  let biome = wld.biomes[bid];
+  biome.zones.push(zid);
+}
+
+export function biome_zone_count(biome) {
+  // Number of zones in this biome.
+  return biome.zones.length;
+}
+
+export function biome_size(wld, biome) {
+  // Minimum number of panes in this biome.
+  let result = 0;
+  for (let zid of biome.zones) {
+    let zone = wld.zones[zid];
+    if (zone == undefined) {
+      result += 1;
+    } else {
+      result += zone_size(zone);
+    }
+  }
   return result;
 }
 
-// TODO: More arguments?
-export function create_pane(wld, id) {
-  // Creates a new pane with the given ID (or with a new ID for the given
-  // world) and adds it to the given world, possibly replacing any previous
-  // pane that had the same ID (a warning will be issued in that case). Returns
-  // the created (empty) pane.
+export function zone_size(zone) {
+  // Number of panes in this zone.
+  return zone.panes.length;
+}
+
+export function add_pane_to_zone(wld, pid, zid) {
+  // Adds the given pane to the given zone (both given by ID).
+  let zone = wld.zones[zid];
+  zone.panes.push(pid);
+}
+
+export function create_biome(wld, typ, id) {
+  // Creates a new biome with the given type and ID (or with a new ID for the
+  // given world). Issues a warning if the ID was already in use. Default type
+  // is "plains." Returns the created biome after adding it to the world.
   if (id == undefined) {
-    id = create_pane_id(wld)
+    id = create_id(wld, "biome");
+  }
+  if (wld.biomes.hasOwnProperty(id)) {
+    console.warn("create_biome replacing biome with ID " + id);
+  }
+  if (typ == undefined) {
+    typ = "plains";
+  }
+
+  let result = {
+    "world": wld,
+    "id": id,
+    "type": typ,
+    "zones": [],
+  };
+  wld.biomes[id] = result;
+  return result;
+}
+
+export function create_zone(wld, biome, typ, id) {
+  // Creates a new zone in the given biome with the given type and ID (or with
+  // a new ID for the given world). The type defaults to "loop." A warning is
+  // issued if an existing ID is reused. Returns the newly created zone after
+  // adding it to the world.
+  //
+  // A new biome is created if the biome is given as undefined.
+  if (id == undefined) {
+    id = create_id(wld, "zone");
+  }
+  if (wld.zones.hasOwnProperty(id)) {
+    console.warn("create_zone replacing zone with ID " + id);
+  }
+  if (typ == undefined) {
+    typ = "loop";
+  }
+  if (biome == undefined) {
+    biome = create_biome(wld, undefined, biome).id;
+  }
+
+  var result = {
+    "world": wld,
+    "biome": biome,
+    "id": id,
+    "type": typ,
+    "panes": [],
+  }
+  wld.zones[id] = result;
+  return result;
+}
+
+export function create_pane(wld, zone, id) {
+  // Creates a new empty pane with the given ID (or with a new ID for the given
+  // world) and adds it to the given world as part of the given zone, possibly
+  // replacing any previous pane that had the same ID (a warning will be issued
+  // in that case). Creates a new zone if necessary. Returns the created
+  // (empty) pane.
+  if (id == undefined) {
+    id = create_id(wld, "pane")
   }
   if (wld.panes.hasOwnProperty(id)) {
     console.warn("create_pane replacing pane with ID " + id);
   }
-  // TODO: non-fake version of this
+  if (zone == undefined) {
+    zone = create_zone(wld, undefined, undefined, zone).id;
+  }
+  add_pane_to_zone(wld, id, zone);
+
   var result = {
     "world": wld.name,
+    "zone": zone,
     "id": id,
     "blocks": [],
     "parents": {},
@@ -177,7 +267,7 @@ export function create_entity(wld, id) {
   // pane that had the same ID (a warning will be issued in that case). Returns
   // the created (blank) entity.
   if (id == undefined) {
-    id = create_entity_id(wld)
+    id = create_id(wld, "entity")
   }
   if (wld.entities.hasOwnProperty(id)) {
     console.warn("create_entity replacing entity with ID " + id);
@@ -215,14 +305,6 @@ export function create_entity(wld, id) {
 
   wld.entities[id] = result;
   return result;
-}
-
-export function assign_biome(wld, id, biome) {
-  // Assigns the given pane to the given biome in the given world.
-  if (!wld.biomes.hasOwnProperty(biome)) {
-    wld.biomes[biome] = {};
-  }
-  wld.biomes[biome][id] = true;
 }
 
 export function block_at(pane, pos) {

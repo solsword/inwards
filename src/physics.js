@@ -107,11 +107,10 @@ export function tick_world(wld, trace) {
 export function tick_panes(wld, elapsed, target_pid, tick_blocks, depth) {
   // Recursively ticks all entities and blocks in the given pane and panes
   // below it up to depth 2.
-  if (depth > 2) {
+  let pane = wld.panes[target_pid];
+  if (depth > 2 || pane == undefined) {
     return;
   }
-
-  let pane = wld.panes[target_pid];
 
   // Tick blocks:
   if (tick_blocks) {
@@ -668,7 +667,7 @@ export function blocks_in_bb(wld, pane, bb, depth) {
   // blocks from inlays, and even CHAOS if a deep enough inlay is hit.
   if (depth == undefined) {
     depth = 0;
-  } else if (depth > 2) {
+  } else if (depth > 2 || pane == undefined) {
     let result = {};
     result[blocks.CHAOS] = true;
     return result;
@@ -730,7 +729,7 @@ export function avg_scale(wld, pane, bb, depth) {
   if (depth == undefined) {
     depth = 0;
   }
-  if (depth > 2) {
+  if (depth > 2 || pane == undefined) {
     return 1.0;
   }
   let bba = (bb[2] - bb[0]) * (bb[3] - bb[1]);
@@ -772,8 +771,12 @@ export function trace_pos(wld, pane, pos, depth) {
   if (depth == undefined) {
     depth = 0;
   }
-  if (depth > 2) {
-    return [[ [undefined, pane.id] ], pos, 1.0];
+  if (depth > 2 || pane == undefined) {
+    if (pane == undefined) {
+      return [undefined, pos, 1.0];
+    } else {
+      return [[ [undefined, pane.id] ], pos, 1.0];
+    }
   }
   let subtrace = undefined;
   let subpos = undefined;

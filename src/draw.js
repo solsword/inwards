@@ -110,7 +110,8 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
   // Recursively expands edges so that inner panes are correctly drawn at a
   // smaller scale. Tracks depth and cuts off after depth 2; never renders
   // blocks/panes that fall outside the given edges.
-  if (depth > 2) {
+  let pane = wld.panes[target_pid];
+  if (depth > 2 || pane == undefined) {
     return;
   }
 
@@ -121,8 +122,6 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
 
   function x_(x) { return (x - edges[0]) * hscale; }
   function y_(y) { return (y - edges[1]) * vscale; }
-
-  let pane = wld.panes[target_pid];
 
   // Draw blocks:
   for (let x = 0; x < world.PANE_SIZE; ++x) {
