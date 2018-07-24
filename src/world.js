@@ -2,6 +2,7 @@
 // World representation code
 
 import * as blocks from "./blocks";
+import * as biomes from "./biomes";
 
 // Constants
 export var PANE_SIZE = 24;
@@ -93,7 +94,7 @@ export function init_world(name, seed) {
     "entities": {},
     "zones": {},
     "biomes": {},
-    "next_id": { "pane": 0, "entity": 0, "zone": 0, "biome": 0 },
+    "next_ids": {},
   };
   WORLDS[name] = result;
   return result;
@@ -104,8 +105,11 @@ export function by_name(name) {
 }
 
 export function create_id(wld, typ) {
-  let result = wld.next_id[typ];
-  wld.next_id[typ] += 1;
+  if (!wld.next_ids.hasOwnProperty(typ)) {
+    wld.next_ids[typ] = 0;
+  }
+  let result = wld.next_ids[typ];
+  wld.next_ids[typ] += 1;
   return result;
 }
 
@@ -200,12 +204,12 @@ export function create_zone(wld, biome, typ, id) {
   return result;
 }
 
-export function create_pane(wld, zone, id) {
+export function create_pane(wld, params, zone, id) {
   // Creates a new empty pane with the given ID (or with a new ID for the given
   // world) and adds it to the given world as part of the given zone, possibly
   // replacing any previous pane that had the same ID (a warning will be issued
   // in that case). Creates a new zone if necessary. Returns the created
-  // (empty) pane.
+  // (empty) pane. The given parameters are added to the pane.
   if (id == undefined) {
     id = create_id(wld, "pane")
   }
@@ -225,6 +229,8 @@ export function create_pane(wld, zone, id) {
     "parents": {},
     "inlays": [],
     "entities": {},
+    "params": params || { "seed": 17 },
+    "attributes": {},
   }
   for (let i = 0; i < PANE_SIZE * PANE_SIZE; ++i) {
     result.blocks.push(blocks.CHAOS);
@@ -329,11 +335,19 @@ export function fill_pane(pane, block_id) {
   }
 }
 
-export function set_border(pane, block_id) {
+export function set_border(pane, block_id, width) {
   // Overwrites all of the blocks around the edges of a pane.
+  if (width == undefined) {
+    width = 1;
+  }
   for (let x = 0; x < PANE_SIZE; ++x) {
     for (let y = 0; y < PANE_SIZE; ++y) {
-      if (x == 0 || y == 0 || x == PANE_SIZE - 1 || y == PANE_SIZE - 1) {
+      if (
+        x < width
+     || y < width
+     || x > PANE_SIZE - width - 1
+     || y > PANE_SIZE - width - 1
+      ) {
         set_block(pane, [x, y], block_id);
       }
     }
@@ -390,77 +404,6 @@ export function warp_home(entity) {
   // Warps the given entity back to its home, erasing any trace it might have
   // built up.
   place_entity(entity, entity.home.pane, entity.home.pos);
-}
-
-export function fill_test_pane(wld, id) {
-  // Fills out a test pane which inlays itself to form an endless cave.
-  var pane = wld.panes[id];
-  fill_pane(pane, blocks.AIR);
-  set_border(pane, blocks.DIRT);
-  for (let x = 0; x < PANE_SIZE; ++x) {
-    for (let y = 0; y < 3; ++y) {
-      set_block(pane, [x, y], blocks.DIRT);
-    }
-    for (let y = 20; y < PANE_SIZE; ++y) {
-      set_block(pane, [x, y], blocks.DIRT);
-    }
-  }
-
-  for (let y = 2; y < 20; ++y) {
-    set_block(pane, [0, y], blocks.AIR);
-  }
-
-  for (let x = 1; x < 14; ++x) {
-    for (let y = 3; y < 10; ++y) {
-      if (x - 1 > y - 3 && x < 6 && y < 4) {
-        set_block(pane, [x, y], blocks.DIRT);
-      } else if (x - 6 >= y - 3) {
-        set_block(pane, [x, y], blocks.ROCK);
-      }
-    }
-  }
-
-  for (let x = 14; x < PANE_SIZE - 1; ++x) {
-    for (let y = 3; y < 11; ++y) {
-      set_block(pane, [x, y], blocks.ROCK);
-    }
-  }
-
-  for (let x = 18; x < 23; ++x) {
-    for (let y = 3; y < 12; ++y) {
-      if (x - 18 > y - 3 || x - 18 > 12 - y) {
-        set_block(pane, [x, y], blocks.DIRT);
-      }
-    }
-  }
-
-  for (x = 14; x < 20; ++x) {
-    set_block(pane, [x, 11], blocks.DIRT);
-  }
-
-  for (x = 11; x < 15; ++x) {
-    set_block(pane, [x, 19], blocks.DIRT);
-  }
-
-  for (y = 19; y < 24; ++y) {
-    for (x = 1; x < 12; ++x) {
-      if (x - 1 >= 24 - y && 13 - x >= 24 - y) {
-        set_block(pane, [x, y], blocks.ROCK);
-      }
-    }
-    for (x = 11; x < 22; ++x) {
-      if (x - 10 >= 24 - y && 21 - x >= y - 19) {
-        set_block(pane, [x, y], blocks.ROCK);
-      }
-    }
-  }
-
-  // 点滅 blocks
-  set_block(pane, [8, 16], blocks.by_id("点滅㈠"));
-  set_block(pane, [10, 15], blocks.by_id("点滅㈡"));
-  set_block(pane, [9, 13], blocks.by_id("点滅㈢"));
-
-  inset_pane(pane, [15, 12], pane, 8);
 }
 
 export function grid_bb(pos, size) {
@@ -535,4 +478,42 @@ export function is_ready(entity, action) {
     entity.cooldowns[action] <= 0
  || entity.cooldowns[action] == undefined
   );
+}
+
+export function make_route(fside, fx, tside, tx, width, depth) {
+  // Creates a route from the given side/position to the given side/position,
+  // with the given width and depth.
+  return [[fside, fx], [tside, tx], width];
+}
+
+// Route property getters
+export function route_start(r) { return r[0]; }
+export function route_end(r) { return r[1]; }
+export function route_width(r) { return r[2]; }
+export function route_depth(r) { return r[3]; }
+export function route_hspan(r) {
+  return Math.abs(route_coords(r, "start")[0] - route_coords(r, "end")[0]);
+}
+export function route_vspan(r) {
+  return Math.abs(route_coords(r, "start")[1] - route_coords(r, "end")[1]);
+}
+
+export function route_coords(r, end) {
+  // Returns the coordinates of either the "start" or "end" of a route.
+  if (end == "start" || end === false) {
+    end = r[0];
+  } else {
+    end = r[1];
+  }
+  let side = end[0];
+  let p = end[1];
+  if (side == "top") {
+    return [p, 0];
+  } else if (side == "bot") {
+    return [p, PANE_SIZE-1];
+  } else if (side == "left") {
+    return [0, p];
+  } else if (side == "right") {
+    return [PANE_SIZE-1, p];
+  }
 }

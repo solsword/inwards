@@ -4,6 +4,7 @@ import * as draw from "./draw";
 import * as world from "./world";
 import * as physics from "./physics";
 import * as animate from "./animate";
+import * as generate from "./generate";
 
 // Viewport & window stuff:
 var RESIZE_TIMEOUT = 20;
@@ -55,7 +56,21 @@ function draw_frame(now) {
   CTX.clearRect(0, 0, CTX.cwidth, CTX.cheight);
 
   // Draw the world:
-  draw.draw_world(CTX, CURRENT_WORLD, THE_PLAYER.trace)
+  let visible = draw.draw_world(CTX, CURRENT_WORLD, THE_PLAYER.trace)
+
+  // Generate missing panes that are (or are about to be) visible:
+  for (let pid of visible) {
+    let pane = CURRENT_WORLD.panes[pid];
+    if (generate.needs_generation(pane)) {
+      generate.generate_pane(pane);
+    }
+    for (let inl of pane.inlays) {
+      let sp = CURRENT_WORLD.panes[inl.id];
+      if (generate.needs_generation(sp)) {
+        generate.generate_pane(sp);
+      }
+    }
+  }
 
   // Draw animations:
   animate.draw_active(CTX, ANIMATION_FRAME);
@@ -77,10 +92,14 @@ export function go() {
 
   // TODO: Non-test here
   CURRENT_WORLD = world.init_world("test");
-  let test_pane = world.create_pane(CURRENT_WORLD);
-  world.fill_test_pane(CURRENT_WORLD, test_pane.id);
+  let start_pane = world.create_pane(CURRENT_WORLD);
+  let start_selector = world.create_pane(CURRENT_WORLD);
+  generate.fill_funnel_pane(CURRENT_WORLD, start_pane.id, start_selector.id);
+  generate.fill_start_pane(CURRENT_WORLD, start_selector.id);
+  // TODO: This? A defined starting pane?
   THE_PLAYER = world.create_entity(CURRENT_WORLD);
-  world.set_home(test_pane, [6, 12], THE_PLAYER);
+  // TODO: Better here!
+  world.set_home(start_pane, [12, 12], THE_PLAYER);
   world.warp_home(THE_PLAYER);
 
   var screensize = Math.min(window.innerWidth, window.innerHeight);

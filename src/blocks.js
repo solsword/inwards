@@ -5,13 +5,14 @@ export var BLOCKS = [
   { "id": "chaos", "color": "#500", "accent": "#300" },
   { "id": "air", "color": "#fff", "accent": "#eef" },
   { "id": "dirt", "color": "#730", "accent": "#620" },
-  { "id": "rock", "color": "#999", "accent": "#888" },
+  { "id": "stone", "color": "#999", "accent": "#888" },
   { "id": "smooth_rock", "color": "#777", "accent": "#66" },
   { "id": "ice", "color": "#ccf", "accent": "#aaf" },
   { "id": "trunk", "color": "#b70", "accent": "#940" },
   { "id": "branches", "color": "#c80", "accent": "#a50" },
   { "id": "leaves", "color": "#191", "accent": "#3b2" },
   { "id": "water", "color": "#44b", "accent": "#008" },
+  { "id": "brick", "color": "#a64", "accent": "#cc9" },
   { "id": "点滅㈠", "color": "#185", "accent": "#3d7" },
   { "id": "点滅㈡", "color": "#aec", "accent": "#7ea" },
   { "id": "点滅㈢", "color": "#cfe", "accent": "#8fb" },
@@ -20,7 +21,7 @@ export var BLOCKS = [
 export var CHAOS = 0;
 export var AIR = 1;
 export var DIRT = 2;
-export var ROCK = 3;
+export var STONE = 3;
 
 export function by_id(bid) {
   for (let i = 0; i < BLOCKS.length; ++i) {
@@ -36,6 +37,7 @@ export var SOLID = {
   "rock": true,
   "smooth_rock": true,
   "ice": true,
+  "brick": true,
   "点滅㈠": true,
 }
 
