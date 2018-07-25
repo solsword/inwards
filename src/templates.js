@@ -110,15 +110,15 @@ T.plains.outskirts = [
     }
     if (left_elevation == undefined) {
       left_elevation = (
-        PLAINS_MIN_SKY
-      + (seed % (PLAINS_MAX_SKY - 1 - PLAINS_MIN_SKY))
+        biomes.PLAINS_MIN_SKY
+      + (seed % (biomes.PLAINS_MAX_SKY - 1 - biomes.PLAINS_MIN_SKY))
       );
       seed = rng.next(seed);
     }
     if (right_elevation == undefined) {
       right_elevation = (
-        PLAINS_MIN_SKY
-      + (seed % (PLAINS_MAX_SKY - 1 - PLAINS_MIN_SKY))
+        biomes.PLAINS_MIN_SKY
+      + (seed % (biomes.PLAINS_MAX_SKY - 1 - biomes.PLAINS_MIN_SKY))
       );
       seed = rng.next(seed);
     }
@@ -160,7 +160,7 @@ T.plains.outskirts = [
       let t = x / (world.PANE_SIZE - 1);
       let elev = left_elevation * (1 - t) + right_elevation * t;
       let ut = 0.5 - Math.abs(t - 0.5);
-      elev += PLAINS_UNDULATION * ut * ustr * Math.sin(t + useed);
+      elev += biomes.PLAINS_UNDULATION * ut * ustr * Math.sin(t + useed);
       elev = Math.floor(elev);
       if (x == anchor) {
         a_elev = elev;

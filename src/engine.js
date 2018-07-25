@@ -62,12 +62,12 @@ function draw_frame(now) {
   for (let pid of visible) {
     let pane = CURRENT_WORLD.panes[pid];
     if (generate.needs_generation(pane)) {
-      generate.generate_pane(pane);
+      generate.generate_pane(CURRENT_WORLD, pane);
     }
     for (let inl of pane.inlays) {
       let sp = CURRENT_WORLD.panes[inl.id];
       if (generate.needs_generation(sp)) {
-        generate.generate_pane(sp);
+        generate.generate_pane(CURRENT_WORLD, sp);
       }
     }
   }
