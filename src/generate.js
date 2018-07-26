@@ -55,6 +55,7 @@ export function generate_pane(wld, pid) {
 export function fill_test_pane(wld, id) {
   // Fills out a test pane which inlays itself to form an endless cave.
   var pane = wld.panes[id];
+  seal_generation(pane, "test_pane");
   world.fill_pane(pane, air);
   world.set_border(pane, dirt);
   for (let x = 0; x < PANE_SIZE; ++x) {
@@ -126,6 +127,7 @@ export function fill_test_pane(wld, id) {
 export function fill_start_pane(wld, id) {
   // Fills out a start pane which inlays four panes from different biomes.
   var pane = wld.panes[id];
+  seal_generation(pane, "start_pane");
 
   let air = blocks.by_id("air");
   let brick = blocks.by_id("brick");
@@ -195,7 +197,7 @@ export function fill_start_pane(wld, id) {
       {
         "seed": rng.sub_seed(pane.params.seed, anchor),
         "constraints": {
-          "routes": [ world.make_route(ent[0], ent[1], ent[0], ent[1], 3, 0) ]
+          "entrances": [ ent ]
         }
       },
       zone.id
@@ -208,9 +210,11 @@ export function fill_funnel_pane(wld, id, sub) {
   // Fills out a funnel pane that leads both into itself and into the given
   // pane from the top.
   var pane = wld.panes[id];
+  seal_generation(pane, "funnel_pane");
 
   let air = blocks.by_id("air");
   let stone = blocks.by_id("stone");
+  let bridge = blocks.by_id("bridge");
 
   for (let x = 0; x < world.PANE_SIZE; ++x) {
     for (let y = 0; y < world.PANE_SIZE; ++y) {
@@ -223,6 +227,15 @@ export function fill_funnel_pane(wld, id, sub) {
       }
     }
   }
+
+  for (let x = 5; x < 19; ++x) {
+    world.set_block(pane, [x, 13], bridge);
+  }
+
+  world.set_block(pane, [11, 13], stone);
+  world.set_block(pane, [12, 13], stone);
+  world.set_block(pane, [11, 14], stone);
+  world.set_block(pane, [12, 14], stone);
 
   world.inset_pane(pane, [5, 15], pane, 6);
   world.inset_pane(pane, [13, 15], wld.panes[sub], 6);

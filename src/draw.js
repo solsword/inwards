@@ -90,7 +90,7 @@ export function viewport_edges(ctx) {
 
 export function draw_world(ctx, wld, trace) {
   // Draws the world visible within the context's viewport using the given
-  // trace to anchor location. Returns a list of pane IDs that are visible.
+  // trace to anchor location. Returns a set of pane IDs that are visible.
   // TODO: Chunk rendering...
   let edges = viewport_edges(ctx);
 
@@ -113,7 +113,7 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
   // blocks/panes that fall outside the given edges.
   let pane = wld.panes[target_pid];
   if (depth > 2 || pane == undefined) {
-    return [];
+    return {};
   }
 
   let ew = edges[2] - edges[0];
@@ -155,7 +155,8 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
   }
 
   // Recursively draw inlays:
-  let visible = [ target_pid ];
+  let visible = {}
+  visible[target_pid] = true;
   for (let ins of pane.inlays) {
     let sf = ins.size / world.PANE_SIZE;
     let inner_edges = [
@@ -165,7 +166,9 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
       world.inner_coord(edges[3], ins.at[1], sf),
     ];
     let vh = draw_panes(ctx, wld, ins.id, inner_edges, depth + 1);
-    visible = Array.concat(visible, vh);
+    for (let k of Object.keys(vh)) {
+      visible[k] = true;
+    }
   }
 
   // Draw entities:

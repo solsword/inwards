@@ -59,15 +59,15 @@ function draw_frame(now) {
   let visible = draw.draw_world(CTX, CURRENT_WORLD, THE_PLAYER.trace)
 
   // Generate missing panes that are (or are about to be) visible:
-  for (let pid of visible) {
+  for (let pid of Object.keys(visible)) {
     let pane = CURRENT_WORLD.panes[pid];
     if (generate.needs_generation(pane)) {
-      generate.generate_pane(CURRENT_WORLD, pane);
+      generate.generate_pane(CURRENT_WORLD, pane.id);
     }
     for (let inl of pane.inlays) {
       let sp = CURRENT_WORLD.panes[inl.id];
       if (generate.needs_generation(sp)) {
-        generate.generate_pane(CURRENT_WORLD, sp);
+        generate.generate_pane(CURRENT_WORLD, sp.id);
       }
     }
   }

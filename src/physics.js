@@ -227,9 +227,17 @@ export function tick_entity(wld, pane, entity, elapsed) {
     v_traction = true;
   } else if (state == "slipping") {
     horiz_control = 0.8;
-    vert_control = 0;
+    if (surroundings.on_platform) {
+      vert_control = 1;
+    } else {
+      vert_control = 0.1;
+    }
   } else if (state == "standing") {
-    vert_control = 0;
+    if (surroundings.on_platform) {
+      vert_control = 1;
+    } else {
+      vert_control = 0.1;
+    }
     h_traction = true;
   }
 
@@ -385,7 +393,7 @@ export function jump_vector(surroundings, ctl) {
     } else {
       return [0, 1];
     }
-  } else if (surroundings.blocked.down) {
+  } else if (surroundings.blocked.down || surroundings.on_platform) {
     return [0, -1];
   } else {
     if (surroundings.blocked.left && !surroundings.blocked.right) {
@@ -394,6 +402,9 @@ export function jump_vector(surroundings, ctl) {
       return unit_vector(0.65);
     }
   }
+  console.warn("Unknown jump situation:");
+  console.warn(surroundings);
+  return [0, 1];
 }
 
 export function overlaps_wall(wld, pane, entity, pos) {
@@ -445,7 +456,7 @@ export function movement_state(entity, surroundings) {
     }
   }
 
-  if (surroundings.on_floor) {
+  if (surroundings.on_floor || surroundings.on_platform) {
     result = "standing";
   }
   if (
@@ -593,6 +604,9 @@ export function detect_surroundings(wld, pane, bbox, depth_adj) {
 
   let only_slippery = true;
   for (let b of Object.keys(below)) {
+    if (blocks.is_platform(b)) {
+      result["on_platform"] = true;
+    }
     if (blocks.is_solid(b)) {
       result["on_floor"] = true;
       result.blocked["down"] = true;
@@ -601,7 +615,7 @@ export function detect_surroundings(wld, pane, bbox, depth_adj) {
       only_slippery = false;
     }
   }
-  if (result.on_floor && only_slippery) {
+  if ((result.on_floor || result.on_platform) && only_slippery) {
     result["slippery_floor"] = true;
   }
 

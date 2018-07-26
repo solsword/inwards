@@ -15,32 +15,13 @@ for (let b of Object.keys(biomes.BIOMES)) {
 
 T.plains.outskirts = [
   // A simple template that fills the sky with air, the ground with dirt, and
-  // insets a single inlay in the middle of it all. Not necessarily traversable
-  // from side to side, but does allow dropping from above to either side. No
-  // access from the bottom.
+  // insets a single inlay in the middle of it all. Not directly traversable
+  // from side to side.
   function (wld, pane) {
     let constraints = pane.params.constraints || {};
-    if (constraints.routes) {
-      for (let r of constraints.routes) {
-        let st = world.route_start(r);
-        let ed = world.route_end(r);
-        if (route_depth(r) <= 0) {
-          return false;
-        }
-        if (
-          (st[0] == "bot" || ed[0] == "bot" || ed[0] == "top")
-       || (
-            (st[0] == "left" || st[0] == "right")
-         && (st[1] > PLAINS_MAX_SKY)
-          )
-       || (
-            (ed[0] == "left" || ed[0] == "right")
-         && (ed[1] > PLAINS_MAX_SKY)
-          )
-       || (route_hspan(r) > PANE_SIZE/4)
-        ) {
-          return false;
-        }
+    if (constraints.hasOwnProperty("traverse_depth")) {
+      if (constraints.traverse_depth < 1) {
+        return false;
       }
     }
     return true;
@@ -49,65 +30,10 @@ T.plains.outskirts = [
     let seed = pane.params.seed >>> 0;
     if (seed == undefined) { seed = 17; }
 
-    let left_elevation = undefined;
-    let right_elevation = undefined;
-    let fall_left = 0;
-    let fall_right = world.PANE_SIZE - 1;
     let constraints = pane.params.constraints || {};
-    if (constraints.routes) {
-      for (let r of constraints.routes) {
-        let st = world.route_start(r);
-        let ed = world.route_end(r);
-        let left_bot = undefined;
-        let right_bot = undefined;
-        if (st[0] == "left") {
-          left_bot = Math.floor(st[1] + world.route_width(r)/2);
-        }
-        if (ed[0] == "left") {
-          left_bot = Math.floor(ed[1] + world.route_width(r)/2);
-        }
-        if (st[0] == "right") {
-          right_bot = Math.floor(st[1] + world.route_width(r)/2);
-        }
-        if (ed[0] == "right") {
-          right_bot = Math.floor(ed[1] + world.route_width(r)/2);
-        }
-        if (
-          left_bot != undefined
-       && (left_elevation == undefined || left_elevation < left_bot)
-        ) {
-          left_elevation = left_bot;
-        }
-        if (
-          right_bot != undefined
-       && (right_elevation == undefined || right_elevation < right_bot)
-        ) {
-          right_elevation = right_bot;
-        }
-        let left = Math.min(
-          world.route_coords(r, "start")[0],
-          world.route_coords(r, "end")[0]
-        );
-        let right = Math.max(
-          world.route_coords(r, "start")[0],
-          world.route_coords(r, "end")[0]
-        );
-        top_left = (
-          (st[0] == "top" || ed[0] == "top")
-       && (st[0] == "left" || ed[0] == "left")
-        );
-        top_right = (
-          (st[0] == "top" || ed[0] == "top")
-       && (st[0] == "right" || ed[0] == "right")
-        );
-        if (top_left && fall_left < right) {
-          fall_left = right;
-        }
-        if (top_right && fall_right > left) {
-          fall_right = left;
-        }
-      }
-    }
+    let left_elevation = constraints.left_elevation;
+    let right_elevation = constraints.right_elevation;
+    let tdc = constraints.traverse_depth;
     if (left_elevation == undefined) {
       left_elevation = (
         biomes.PLAINS_MIN_SKY
@@ -127,13 +53,8 @@ T.plains.outskirts = [
     right_elevation += seed % 2;
     seed = rng.next(seed);
 
-    let available = fall_right - fall_left - 2;
+    let available = 14;
     let isizei = 0;
-    if (available >= 12) {
-      isizei = 0;
-    } else {
-      isizei = 1;
-    }
     seed = rng.next(seed);
     if (seed % 2) {
       isizei += 1;
@@ -144,8 +65,7 @@ T.plains.outskirts = [
     }
     seed = rng.next(seed);
     let isize = [12, 8, 6][isizei];
-    let sr_width = [2, 3, 4][isizei];
-    let anchor = fall_left + 1 + (seed % (fall_right - 1 - isize - fall_left));
+    let anchor = 6 + (seed % (13 - isize));
     seed = rng.next(seed);
     let a_elev = undefined;
     let ae_elev = undefined;
@@ -180,38 +100,24 @@ T.plains.outskirts = [
       Math.min(a_elev, ae_elev) - jut
     ];
     let isf = world.PANE_SIZE / isize;
-    let subroutes = [
-      world.make_route(
-        "left",
-        (a_elev - ipos[1]) * isf,
-        "right",
-        (ae_elev - ipos[1]) * isf,
-        sr_width,
-        3
-      ),
-      world.make_route(
-        "right",
-        (ae_elev - ipos[1]) * isf,
-        "left",
-        (a_elev - ipos[1]) * isf,
-        sr_width,
-        3
-      ),
-    ]
-    // TODO: Inheritance of route constraints!
+    let params = {
+      "seed": rng.sub_seed(pane.params.seed, ipos),
+      "constraints": {
+        "left_elevation": a_elev,
+        "right_elevation": ae_elev,
+      }
+    }
+    if (tdc != undefined && tdc > 0) {
+      params.constraints.traverse_depth = tdc - 1;
+    }
     let sub = world.create_pane(
       wld,
-      {
-        "seed": rng.sub_seed(pane.params.seed, ipos),
-        "constraints": {
-          "routes": subroutes
-        }
-      },
+      params,
       pane.zone, // same zone (TODO: always?)
       undefined // generate a new id (TODO: always?)
     );
 
-    console.log([pane, ipos, sub.id, isize]);
+    //console.log([pane, ipos, sub.id, isize]);
     world.inset_pane(pane, ipos, wld.panes[sub.id], isize);
   }
 ]

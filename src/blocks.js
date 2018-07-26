@@ -5,9 +5,11 @@ export var BLOCKS = [
   { "id": "chaos", "color": "#500", "accent": "#300" },
   { "id": "air", "color": "#fff", "accent": "#eef" },
   { "id": "dirt", "color": "#730", "accent": "#620" },
+  { "id": "bridge", "color": "#b84", "accent": "#a53" },
   { "id": "stone", "color": "#999", "accent": "#888" },
-  { "id": "smooth_rock", "color": "#777", "accent": "#66" },
+  { "id": "smooth_stone", "color": "#777", "accent": "#666" },
   { "id": "ice", "color": "#ccf", "accent": "#aaf" },
+  { "id": "ice_bridge", "color": "#abf", "accent": "#89f" },
   { "id": "trunk", "color": "#b70", "accent": "#940" },
   { "id": "branches", "color": "#c80", "accent": "#a50" },
   { "id": "leaves", "color": "#191", "accent": "#3b2" },
@@ -34,11 +36,16 @@ export function by_id(bid) {
 
 export var SOLID = {
   "dirt": true,
-  "rock": true,
-  "smooth_rock": true,
+  "stone": true,
+  "smooth_stone": true,
   "ice": true,
   "brick": true,
   "点滅㈠": true,
+}
+
+export var PLATFORM = {
+  "bridge": true,
+  "ice_bridge": true,
 }
 
 export var CLIMABLE = {
@@ -52,12 +59,13 @@ export var LIQUID = {
 }
 
 export var SMOOTH = {
-  "smooth_rock": true,
+  "smooth_stone": true,
   "ice": true,
 }
 
 export var SLIPPERY = {
   "ice": true,
+  "ice_bridge": true,
 }
 
 export function color(bid) { return BLOCKS[bid].color; }
@@ -66,6 +74,10 @@ export function name(bid) { return BLOCKS[bid].id; }
 
 export function is_solid(bid) {
   return SOLID[BLOCKS[bid].id] || false;
+}
+
+export function is_platform(bid) {
+  return PLATFORM[BLOCKS[bid].id] || false;
 }
 
 export function is_climable(bid) {
