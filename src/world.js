@@ -333,9 +333,9 @@ export function create_entity(wld, id) {
     "hspeed": 12 / 1000,
     "vspeed": 10 / 1000,
     "tvel": 60 / 1000,
-    "jump": 5 / 1000,
-    "jump_duration": 100, // milliseconds
-    "max_jump_duration": 300, // milliseconds
+    "jump": 10 / 1000,
+    "jump_duration": 50, // pre-dilation milliseconds
+    "max_jump_duration": 150, // pre-dilation milliseconds
     "cooldowns": {},
     "boosts": {},
     "ctl": {

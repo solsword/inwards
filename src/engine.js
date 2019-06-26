@@ -17,7 +17,7 @@ var CTX;
 export var ANIMATION_FRAME = 0;
 
 // Updates:
-export const WORLD_UPDATE_INTERVAL = 12; // milliseconds
+export const WORLD_UPDATE_INTERVAL = 20; // milliseconds
 
 // Menus:
 var MENU_BUTTON = null;

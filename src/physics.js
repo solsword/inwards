@@ -24,7 +24,7 @@ BLOCK_PROGRESSIONS[blocks.by_id("点滅㈢")] = blocks.by_id("点滅㈠");
 export const TICK_DEPTH = 2;
 
 // Modifies elapsed time to slow down in-game time relative to real time.
-export const TIME_DILATION = 0.1;
+export const TIME_DILATION = 0.3;
 
 // Gravity in blocks/millisecond
 export const GRAVITY = 0.5 / 1000;
@@ -310,6 +310,7 @@ export function tick_entity(wld, entity, elapsed) {
   if (jump_control > 0 && entity.ctl.jump && world.is_ready(entity, "jump")) {
     let jv = jump_vector(surroundings, entity.ctl);
     entity.cooldowns.jump = JUMP_COOLDOWN;
+    entity.vel[1] = 0; // zero-out vertical velocity when jump starts
     entity.boosts.jump = {
       "vector": jv,
       "duration": entity.jump_duration,
@@ -323,7 +324,11 @@ export function tick_entity(wld, entity, elapsed) {
   let expired = [];
   for (let k of Object.keys(entity.boosts)) {
     let bst = entity.boosts[k];
-    console.log("Boost", bst, elapsed);
+    // Extend jumps
+    if (k == "jump" && entity.ctl.jump && bst.duration < bst.max_duration) {
+      bst.duration += elapsed;
+      bst.duration = Math.min(bst.duration, bst.max_duration);
+    }
     let boost_time = elapsed;
     if (bst.duration - bst.elapsed > elapsed) { // boost isn't expiring
       bst.elapsed += elapsed;
@@ -332,10 +337,35 @@ export function tick_entity(wld, entity, elapsed) {
       bst.elapsed = bst.duration;
       expired.push(k);
     }
-    entity.vel[0] += bst.magnitude * bst.vector[0] * boost_time;
-    entity.vel[1] += bst.magnitude * bst.vector[1] * boost_time;
-    if (k == "jump" && entity.ctl.jump && bst.duration < bst.max_duration) {
-      bst.duration += elapsed;
+    // overwrite velocity with boost velocity if it's smaller and the player
+    // isn't trying to go in the opposite direction:
+    if ( // horizontal
+      (
+        bst.vector[0] < 0
+     && cx <= 0
+     && entity.vel[0] > bst.vector[0] * bst.magnitude
+      )
+   || (
+        bst.vector[0] > 0
+     && cx >= 0
+     && entity.vel[0] < bst.vector[0] * bst.magnitude
+      )
+    ) {
+      entity.vel[0] = bst.vector[0] * bst.magnitude;
+    }
+    if ( // vertical
+      (
+        bst.vector[1] < 0
+     && cy <= 0
+     && entity.vel[1] > bst.vector[1] * bst.magnitude
+      )
+   || (
+        bst.vector[1] > 0
+     && cy >= 0
+     && entity.vel[1] < bst.vector[1] * bst.magnitude
+      )
+    ) {
+      entity.vel[1] = bst.vector[1] * bst.magnitude;
     }
   }
   for (let k of expired) {
