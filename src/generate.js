@@ -136,39 +136,37 @@ export function fill_start_pane(wld, id) {
   world.fill_pane(pane, air);
 
   // border
-  world.set_border(pane, brick, 3);
+  world.set_border(pane, brick, 1);
 
-  // opening at the top
-  for (let x = 8; x < 16; ++x) {
-    for (let y = 0; y < 3; ++y) {
-      world.set_block(pane, [x, y], air);
-    }
+  // openings at the top and bottom
+  for (let x = 10; x <= 13; ++x) {
+    world.set_block(pane, [x, 0], air);
+    world.set_block(pane, [x, world.PANE_SIZE-1], air);
   }
 
   // arms from the sides
   for (let x = 0; x < world.PANE_SIZE; ++x) {
-    for (let y = 10; y < 14; ++y) {
-      if (x < 11 || x > 12) {
+    for (let y = 9; y < 15; ++y) {
+      if (x < 10 || x > 13) {
         world.set_block(pane, [x, y], brick);
       }
     }
   }
-  // with notches
-  world.set_block(pane, [10, 10], brick);
-  world.set_block(pane, [10, 13], brick);
-  world.set_block(pane, [13, 10], brick);
-  world.set_block(pane, [13, 13], brick);
 
   // platforms for top/bottom access to each inlay
-  world.set_block(pane, [11, 9], brick);
-  world.set_block(pane, [12, 9], brick);
-  world.set_block(pane, [11, 14], brick);
-  world.set_block(pane, [12, 14], brick);
+  world.set_block(pane, [9, 5], brick);
+  world.set_block(pane, [10, 5], brick);
+  world.set_block(pane, [13, 5], brick);
+  world.set_block(pane, [14, 5], brick);
+  world.set_block(pane, [9, 19], brick);
+  world.set_block(pane, [10, 19], brick);
+  world.set_block(pane, [13, 19], brick);
+  world.set_block(pane, [14, 19], brick);
 
   // columns above and below
-  for (let x = 10; x < 13; ++x) {
+  for (let x = 11; x < 13; ++x) {
     for (let y = 0; y < world.PANE_SIZE; ++y) {
-      if (y < 6 || y > 17) {
+      if ((y >= 2 && y <= 3) || (y >= 7 && y <= 17) || (y >= 21 && y <= 22)) {
         world.set_block(pane, [x, y], brick);
       }
     }
@@ -176,10 +174,10 @@ export function fill_start_pane(wld, id) {
 
   // four new zones in four new biomes:
   let anchors = [
-    [2, 2],
-    [14, 2],
-    [2, 14],
-    [14, 14]
+    [1, 1],
+    [15, 1],
+    [1, 15],
+    [15, 15]
   ];
   let entrances = [
     ["right", 18],

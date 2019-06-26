@@ -20,7 +20,15 @@ export var MENU_PALETTE = {
   "selected_button": "#88c",
 };
 
-var BLOCK_BORDER = 0.05;
+// How thick the block borders should be
+const BLOCK_BORDER = 0.05;
+
+// Debug flags for drawing entities
+const DRAW_SURROUNDINGS = false;
+const DRAW_ENTITY_STATE = false;
+
+// How deep to draw stuff recursively (relative to the player's pane)
+export const DRAW_DEPTH = 2;
 
 export function interp_color(original, proportion, target) {
   // Interpolates two colors according to the given proportion. Accepts and
@@ -98,7 +106,11 @@ export function draw_world(ctx, wld, trace) {
   ctx.textBaseline = "middle";
   ctx.font = Math.floor(FONT_SIZE * ctx.viewport_scale) + "px " + FONT_FACE;
 
-  let tcx = world.find_context(wld, edges, trace);
+  let tcx = world.find_context(wld, edges, trace, world.DEFAULT_CONTEXT_DEPTH);
+
+  // Clear canvas
+  ctx.filLStyle = "black";
+  ctx.rect(0, 0, ctx.cwidth, ctx.cheight);
 
   // Call recursive drawing function.
   let visible = draw_panes(ctx, wld, tcx[0], tcx[1], -tcx[3]);
@@ -109,10 +121,10 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
   // Takes a drawing context, a world, a target pane id, and a
   // left/top/right/bottom edges list, and draws that portion of that pane.
   // Recursively expands edges so that inner panes are correctly drawn at a
-  // smaller scale. Tracks depth and cuts off after depth 2; never renders
+  // smaller scale. Tracks depth and cuts off after DRAW_DEPTH; never renders
   // blocks/panes that fall outside the given edges.
   let pane = wld.panes[target_pid];
-  if (depth > 2 || pane == undefined) {
+  if (depth > DRAW_DEPTH || pane == undefined) {
     return {};
   }
 
@@ -131,26 +143,32 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
 
       // Edge fills the whole block
       ctx.fillStyle = blocks.accent_color(block);
-      ctx.lineWidth = 0.5;
-      ctx.strokeStyle = blocks.accent_color(block);
-      ctx.beginPath();
-      ctx.moveTo(x_(x), y_(y));
-      ctx.lineTo(x_(x+1), y_(y));
-      ctx.lineTo(x_(x+1), y_(y+1));
-      ctx.lineTo(x_(x), y_(y+1));
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fill();
+      let x_0 = x_(x);
+      let x_1 = x_(x+1);
+      let y_0 = y_(y);
+      let y_1 = y_(y+1);
+      let ew = x_1 - x_0;
+      let eh = y_1 - y_0;
+      ctx.fillRect(x_0, y_0, ew, eh);
 
       // Center fills the rest
       ctx.fillStyle = blocks.color(block);
+      let x_b0 = x_(x + BLOCK_BORDER);
+      let x_b1 = x_(x+1 - BLOCK_BORDER);
+      let y_b0 = y_(y + BLOCK_BORDER);
+      let y_b1 = y_(y+1 - BLOCK_BORDER);
+      let rw = x_b1 - x_b0;
+      let rh = y_b1 - y_b0;
+      ctx.fillRect(x_b0, y_b0, rw, rh);
+      /*
       ctx.beginPath();
-      ctx.moveTo(x_(x + BLOCK_BORDER), y_(y + BLOCK_BORDER));
-      ctx.lineTo(x_(x+1 - BLOCK_BORDER), y_(y + BLOCK_BORDER));
-      ctx.lineTo(x_(x+1 - BLOCK_BORDER), y_(y+1 - BLOCK_BORDER));
-      ctx.lineTo(x_(x + BLOCK_BORDER), y_(y+1 - BLOCK_BORDER));
+      ctx.moveTo(x_b0, y_b0);
+      ctx.lineTo(x_b1, y_b0);
+      ctx.lineTo(x_b1, y_b1);
+      ctx.lineTo(x_b0, y_b1);
       ctx.closePath();
       ctx.fill();
+      */
     }
   }
 
@@ -165,6 +183,13 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
       world.inner_coord(edges[2], ins.at[0], sf),
       world.inner_coord(edges[3], ins.at[1], sf),
     ];
+    let ix = x_(ins.at[0])
+    let iy = y_(ins.at[1])
+    let iw = x_(ins.at[0] + ins.size) - ix;
+    let ih = y_(ins.at[1] + ins.size) - iy;
+    // Draw black backing for sub-pane:
+    ctx.fillStyle = "black";
+    ctx.fillRect(ix, iy, iw, ih);
     let vh = draw_panes(ctx, wld, ins.id, inner_edges, depth + 1);
     for (let k of Object.keys(vh)) {
       visible[k] = true;
@@ -181,7 +206,8 @@ export function draw_panes(ctx, wld, target_pid, edges, depth) {
 
 export function draw_entity(ctx, wld, eid, edges) {
   // Draws the entity from the given world with the given ID, using the given
-  // edges to contextualize its position.
+  // edges to contextualize its position (edges are expressed in the
+  // coordinates of its current pane).
 
   let ew = edges[2] - edges[0];
   let eh = edges[3] - edges[1];
@@ -210,6 +236,103 @@ export function draw_entity(ctx, wld, eid, edges) {
   ctx.fillStyle = entity.appearance.color;
   ctx.stroke();
   ctx.fill();
+
+  if (DRAW_SURROUNDINGS) {
+    // find player context in the same way that tick_entity does
+    let gx = entity.pos[0];
+    let gy = entity.pos[1];
+    let radius = entity.size/2 * entity.scale;
+
+    let ebox = [
+      gx - radius,
+      gy - radius,
+      gx + radius,
+      gy + radius
+    ];
+    let tcx = world.find_context(
+      wld,
+      ebox,
+      entity.trace,
+      world.DEFAULT_CONTEXT_DEPTH
+    );
+    let surroundings = physics.detect_surroundings(wld, tcx);
+
+    for (let x = 0; x < surroundings.tiles.length; ++x) {
+      let col = surroundings.tiles[x];
+      for (let y = 0; y < col.length; ++y) {
+        let block = col[y];
+        // x/y coordinates within context pane
+        let pos = [
+          surroundings.tile_origin[0] + (x + 0.5) * surroundings.tile_size,
+          surroundings.tile_origin[1] + (y + 0.5) * surroundings.tile_size
+        ];
+        // convert into entity pane coordinates using ebox and tcx[1]
+        pos = world.rebox(tcx[1], ebox, pos);
+        // correct for given edges
+        xc = x_(pos[0]);
+        yc = y_(pos[1]);
+        // draw a small ellipse
+        ctx.beginPath();
+        ctx.ellipse(
+          xc,
+          yc,
+          (surroundings.tile_size / surroundings.context[2]) * hscale/2,
+          (surroundings.tile_size / surroundings.context[2]) * vscale/2,
+          0,
+          0,
+          2*Math.PI
+        );
+        ctx.strokeStyle = "black";
+        ctx.stroke();
+        ctx.fillStyle = blocks.color(block);
+        ctx.fill();
+      }
+    }
+  }
+
+  if (DRAW_ENTITY_STATE) {
+    let surroundings = physics.entity_surroundings(entity);
+    let ms = physics.movement_state(entity, surroundings);
+    let bltext = "Blocked:";
+    if (surroundings.unblocked < 4) {
+      for (let k of Object.keys(surroundings.blocked)) {
+        bltext += " " + k;
+      }
+    } else {
+      bltext += " <none>";
+    }
+    ctx.font = "16px serif";
+    ctx.fillStyle = "black";
+    ctx.textAlign = "left";
+    ctx.fillText(bltext, 10, 18);
+
+    let intext = "In:";
+    let anyin = false;
+    if (surroundings.in_wall) {
+      intext += " wall";
+      anyin = true;
+    }
+    if (surroundings.in_liquid) {
+      intext += " liquid";
+      anyin = true;
+    }
+    if (surroundings.in_climable) {
+      intext += " climable";
+      anyin = true;
+    }
+    if (anyin) {
+      ctx.fillText(intext, 10, 18*2 + 4);
+    }
+
+    if (surroundings.in_wall) {
+      let wp = physics.wall_push(surroundings)
+      ctx.fillText(
+        "Pushout (" + surroundings.unblocked + "): " + wp[0] + ", " + wp[1],
+        10,
+        18*3 + 8
+      );
+    }
+  }
 }
 
 // Draws an edge of the given shape with the given center point, radius, and

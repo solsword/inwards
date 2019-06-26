@@ -14,12 +14,10 @@
   "author": "Peter Mawhorter <pmawhorter@gmail.com>",
   "license": "GPLv3",
   "devDependencies": {
-    "jspm": "^0.16.53"
+    "jspm": "^0.16.54"
   },
   "jspm": {
-    "dependencies": {
-      "lodash": "npm:lodash@^4.17.10"
-    },
+    "dependencies": {},
     "devDependencies": {
       "babel": "npm:babel-core@^5.8.24",
       "babel-runtime": "npm:babel-runtime@^5.8.24",

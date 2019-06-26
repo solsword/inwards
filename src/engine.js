@@ -14,15 +14,18 @@ var CANVAS;
 var CTX;
 
 // Animation:
-var ANIMATION_FRAME = 0;
+export var ANIMATION_FRAME = 0;
+
+// Updates:
+export const WORLD_UPDATE_INTERVAL = 12; // milliseconds
 
 // Menus:
 var MENU_BUTTON = null;
 var PAUSE_MENU = null;
 
 // Game context:
-var THE_PLAYER = null;
-var CURRENT_WORLD = null;
+export var THE_PLAYER = null;
+export var CURRENT_WORLD = null;
 
 export function update_canvas_size() {
   // Updates the canvas size. Called on resize after a timeout.
@@ -45,12 +48,6 @@ function draw_frame(now) {
   // TODO: Incorporate player scale!
   CTX.viewport_center = THE_PLAYER.pos.slice();
   CTX.viewport_scale = Math.min(CTX.cwidth, CTX.cheight) / world.PANE_SIZE;
-
-  // Player controls:
-  input.player_controls(THE_PLAYER);
-
-  // Physics updates:
-  physics.tick_world(CURRENT_WORLD, THE_PLAYER.trace);
 
   // Clear the canvas:
   CTX.clearRect(0, 0, CTX.cwidth, CTX.cheight);
@@ -80,12 +77,27 @@ function draw_frame(now) {
 
   // reschedule ourselves
   // TODO: Normalize frame count to passage of time?
+  // TODO: DEBUG!
   window.requestAnimationFrame(draw_frame);
 }
 
+function tick_game() {
+  // Reads player controls and updates the world. Not tied to animation frames.
+
+  // Player controls:
+  input.player_controls(THE_PLAYER);
+
+  // Physics updates:
+  // TODO: DEBUG!
+  physics.tick_world(CURRENT_WORLD, THE_PLAYER.trace);
+
+  // Queue up the next update:
+  window.setTimeout(tick_game, WORLD_UPDATE_INTERVAL);
+}
 
 export function go() {
-  // Starts up everything, kicking off draw_frame and setting stuff up.
+  // Starts up everything, kicking off draw_frame and tick_game and setting
+  // stuff up.
   CANVAS = document.getElementById("canvas");
   CTX = CANVAS.getContext("2d");
   update_canvas_size();
@@ -109,6 +121,16 @@ export function go() {
   } else {
     CTX.ui_scale = 1.0;
   }
+
+  // kick off physics
+  // TODO: DEBUG
+  window.setTimeout(tick_game, 0);
+  /*
+  window.setTimeout(tick_game, 50);
+  window.setTimeout(tick_game, 150);
+  window.setTimeout(tick_game, 200);
+  window.setTimeout(tick_game, 250);
+  */
 
   // kick off animation
   window.requestAnimationFrame(draw_frame);

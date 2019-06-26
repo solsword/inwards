@@ -5,10 +5,13 @@ import * as blocks from "./blocks";
 import * as biomes from "./biomes";
 
 // Constants
-export var PANE_SIZE = 24;
+export const PANE_SIZE = 24;
 
 // Globals
 export var WORLDS = {};
+
+// Default depth to use when requesting contexts
+export const DEFAULT_CONTEXT_DEPTH = 3;
 
 export function get_scale_factor(wld, outer_id, pos) {
   // Figures out the scale factor between the inner pane at the given position
@@ -19,6 +22,7 @@ export function get_scale_factor(wld, outer_id, pos) {
   // inlay takes up 8×8 blocks of a 24×24 block pane, the scale factor is 1/3,
   // since each inner unit is 1/3 of an outer unit.
   //
+  // TODO: Double check that this is correct?
   // As a consequence of this, you can multiply by an inner scale factor to
   // convert inner units to outer units, or divide by it to convert outer units
   // to inner units.
@@ -73,6 +77,39 @@ export function outer_position(wld, pane_id, loc, inner_pos) {
   return [
     outer_coord(inner_pos[0], lpos[0], sf),
     outer_coord(inner_pos[1], lpos[1], sf)
+  ];
+}
+
+export function rebox(refbox, tobox, pos) {
+  // Given a bounding box at the same scale as the given position, and an
+  // equivalent bounding box at a different scale, returns a new position
+  // equivalent to the original at the other scale.
+  return [
+    (
+      (
+        (pos[0] - refbox[0]) / (refbox[2] - refbox[0]) 
+      ) * (tobox[2] - tobox[0])
+    + tobox[0]
+    ),
+    (
+      (
+        (pos[1] - refbox[1]) / (refbox[3] - refbox[1]) 
+      ) * (tobox[3] - tobox[1])
+    + tobox[1]
+    )
+  ];
+}
+
+export function rebox_box(refbox, tobox, itbox) {
+  // Works like rebox, but transforms an entire bounding box. Just a
+  // convenience function for calling rebox 4 times.
+  let tl = rebox(refbox, tobox, [itbox[0], itbox[1]]);
+  let br = rebox(refbox, tobox, [itbox[2], itbox[3]]);
+  return [
+    tl[0],
+    tl[1],
+    br[0],
+    br[1]
   ];
 }
 
@@ -270,8 +307,8 @@ export function canonical_inlay(pane) {
 export function create_entity(wld, id) {
   // Creates a new entity with the given ID (or with a new ID for the given
   // world) and adds it to the given world, possibly replacing any previous
-  // pane that had the same ID (a warning will be issued in that case). Returns
-  // the created (blank) entity.
+  // entity that had the same ID (a warning will be issued in that case).
+  // Returns the created (blank) entity.
   if (id == undefined) {
     id = create_id(wld, "entity")
   }
@@ -282,7 +319,7 @@ export function create_entity(wld, id) {
   var result = {
     "world": wld.name,
     "id": id,
-    "size": 0.5,
+    "size": 0.1,
     "appearance": {
       "color": "#429",
       "border_color": "#63b",
@@ -293,9 +330,10 @@ export function create_entity(wld, id) {
     "pos": [PANE_SIZE/2, PANE_SIZE/2],
     "vel": [0, 0],
     "accel": 0.8 / 1000,
-    "hspeed": 21 / 1000,
-    "vspeed": 9 / 1000,
-    "jump": 60 / 1000,
+    "hspeed": 12 / 1000,
+    "vspeed": 10 / 1000,
+    "tvel": 60 / 1000,
+    "jump": 80 / 1000,
     "cooldowns": {},
     "ctl": {
       "x": 0,
@@ -314,8 +352,8 @@ export function create_entity(wld, id) {
 }
 
 export function block_at(pane, pos) {
-  let x = pos[0];
-  let y = pos[1];
+  let x = Math.floor(pos[0]);
+  let y = Math.floor(pos[1]);
   if (x < 0 || y < 0 || x >= PANE_SIZE || y >= PANE_SIZE) {
     return undefined;
   } else {
@@ -406,6 +444,19 @@ export function warp_home(entity) {
   place_entity(entity, entity.home.pane, entity.home.pos);
 }
 
+export function set_entity_trace(entity, new_trace) {
+  // Updates an entity's trace and also takes care of informing the relevant
+  // panes that the entity has left/arrived.
+  let world = WORLDS[entity.world];
+  let old_pane = world.panes[entity.trace[entity.trace.length - 1][1]];
+  let new_pane = world.panes[new_trace[new_trace.length - 1][1]];
+  if (old_pane != new_pane) {
+    delete old_pane.entities[entity.id];
+    new_pane.entities[entity.id] = true;
+  }
+  entity.trace = new_trace;
+}
+
 export function grid_bb(pos, size) {
   // Returns the bounding box for a square region of a grid.
   return [
@@ -416,18 +467,20 @@ export function grid_bb(pos, size) {
   ];
 }
 
-export function find_context(wld, edges, trace) {
-  // Finds a pane that's two panes above the end of the given trace,
+export function find_context(wld, edges, trace, depth) {
+  // Finds a pane that's depth panes above the end of the given trace,
   // hallucinating extra context when necessary. Returns undefined for empty
   // traces, otherwise it returns a [pane_id, edges, scale_factor,
-  // relative_depth] array, where relative_depth will be 2 unless a parent-less
-  // pane blocks hallucination. The scale factor is expressed in terms of the
-  // ratio between the scale of the given pane and the discovered pane.
+  // relative_depth] array, where pane_id is the pane it found, edges are the
+  // same edges in that pane, scale_factor is the scale factor between the two
+  // panes, and relative_depth will be depth unless a parent-less pane blocks
+  // hallucination. The scale factor is expressed in terms of the ratio between
+  // the scale of the given pane and the discovered pane.
   let target_loc = undefined;
   let target_pid = undefined;
   let depth_adjust = 0;
   let full_scale = 1.0;
-  for (let i = trace.length - 1; i > trace.length - 4; --i) {
+  for (let i = trace.length - 1; i > trace.length - depth - 1; --i) {
     if (trace[i] == undefined) {
       if (target_pid == undefined) {
         // No basis from which to hallucinate.
