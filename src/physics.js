@@ -115,20 +115,33 @@ export function tick_world(wld, trace) {
     world.DEFAULT_CONTEXT_DEPTH
   );
 
-  // TODO: DEBUG
-  elapsed = 10;
   tick_panes(wld, elapsed, tcx[0], tick_blocks, -tcx[3]);
 
   LAST_TICK_TIME = now;
 }
 
-export function tick_panes(wld, elapsed, target_pid, tick_blocks, depth) {
+export function tick_panes(
+  wld,
+  elapsed,
+  target_pid,
+  tick_blocks,
+  depth,
+  memo
+) {
   // Recursively ticks all entities and blocks in the given pane and panes
   // below it up to TICK_DEPTH.
+  if (memo == undefined) {
+    memo = {};
+  }
+  if (memo.hasOwnProperty(target_pid)) {
+    return; // don't double-tick multi-visible frames
+  }
   let pane = wld.panes[target_pid];
   if (depth > TICK_DEPTH || pane == undefined) {
-    return;
+    return; // depth cap and unloaded panes
   }
+  // Remember that we've processed this pane
+  memo[target_pid] = true;
 
   // Tick blocks:
   if (tick_blocks) {
@@ -150,7 +163,7 @@ export function tick_panes(wld, elapsed, target_pid, tick_blocks, depth) {
 
   // Recursively tick inlays:
   for (let inl of pane.inlays) {
-    tick_panes(wld, elapsed, inl.id, tick_blocks, depth + 1);
+    tick_panes(wld, elapsed, inl.id, tick_blocks, depth + 1, memo);
   }
 }
 
@@ -297,10 +310,36 @@ export function tick_entity(wld, entity, elapsed) {
   if (jump_control > 0 && entity.ctl.jump && world.is_ready(entity, "jump")) {
     let jv = jump_vector(surroundings, entity.ctl);
     entity.cooldowns.jump = JUMP_COOLDOWN;
-    // update horizontal velocity by adding an impulse
-    entity.vel[0] += entity.jump * jv[0] * jump_control;
-    // reset, don't update the vertical velocity
-    entity.vel[1] = entity.jump * jv[1] * jump_control;
+    entity.boosts.jump = {
+      "vector": jv,
+      "duration": entity.jump_duration,
+      "max_duration": entity.max_jump_duration,
+      "magnitude": entity.jump * jump_control,
+      "elapsed": 0
+    };
+  }
+
+  // Apply & update any boosts
+  let expired = [];
+  for (let k of Object.keys(entity.boosts)) {
+    let bst = entity.boosts[k];
+    console.log("Boost", bst, elapsed);
+    let boost_time = elapsed;
+    if (bst.duration - bst.elapsed > elapsed) { // boost isn't expiring
+      bst.elapsed += elapsed;
+    } else { // boost is expiring this tick
+      boost_time = bst.duration - bst.elapsed;
+      bst.elapsed = bst.duration;
+      expired.push(k);
+    }
+    entity.vel[0] += bst.magnitude * bst.vector[0] * boost_time;
+    entity.vel[1] += bst.magnitude * bst.vector[1] * boost_time;
+    if (k == "jump" && entity.ctl.jump && bst.duration < bst.max_duration) {
+      bst.duration += elapsed;
+    }
+  }
+  for (let k of expired) {
+    delete entity.boosts[k];
   }
 
   // cap velocity
