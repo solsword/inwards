@@ -173,6 +173,7 @@ export function tick_entity(wld, entity, elapsed) {
   let ey = entity.pos[1];
   let radius = entity.size/2 * entity.scale;
 
+  // Find context for our current position:
   let ebox = [
     ex - radius,
     ey - radius,
@@ -187,6 +188,12 @@ export function tick_entity(wld, entity, elapsed) {
   );
   let surroundings = detect_surroundings(wld, tcx);
   let state = movement_state(entity, surroundings);
+
+  // If our latest position was a valid one, save it just in case:
+  if (!is_stuck(surroundings)) {
+    entity.last_valid_pos = entity.pos;
+    entity.last_valid_trace = entity.trace;
+  }
 
   // update cooldowns:
   for (let c of Object.keys(entity.cooldowns)) {
@@ -406,6 +413,16 @@ export function tick_entity(wld, entity, elapsed) {
   let vx = entity.vel[0] * elapsed;
   let vy = entity.vel[1] * elapsed;
 
+  // If we're stuck and not moving, reset our position to the last known safe
+  // position, zero out velocity, and abort update:
+  if (vx == 0 && vy == 0 && is_stuck(surroundings)) {
+    entity.pos = entity.last_valid_pos.slice();
+    entity.vel = [0, 0];
+    world.set_entity_trace(entity, entity.last_valid_trace);
+    return;
+  }
+
+  // compute new position using velocity:
   let newpos = [
     entity.pos[0] + vx,
     entity.pos[1] + vy
@@ -417,7 +434,9 @@ export function tick_entity(wld, entity, elapsed) {
     entity.vel[1] = 0;
   }
 
-  if (!surroundings.in_wall) { // if we're already in a wall don't get fancy
+  // unless we're being pushed out of a wall, interpolate position to avoid
+  // going into a wall
+  if (!surroundings.in_wall) {
     let best_valid = entity.pos.slice();
 
     if (on_nearby_wall(surroundings, ebox, entity, newpos)) {
@@ -472,8 +491,11 @@ export function tick_entity(wld, entity, elapsed) {
   let scale_diff = tp[2];
   let new_scale = (scale_diff / nxscale);
   let rel = trace_relationship(entity.trace, retrace);
+
   // Update position:
   entity.pos = new_pos;
+
+  // Fix up our trace for the new position:
   if (rel == undefined) { // non clear relationship
     console.warn("Retrace", entity.trace, retrace);
     world.set_entity_trace(entity, retrace);
@@ -548,6 +570,22 @@ export function wall_push(surroundings) {
     // TODO: Randomize position
   }
   return result;
+}
+
+export function is_stuck(surroundings) {
+  return (
+    surroundings.unblocked == 0
+ || (
+      surroundings.in_wall
+   && surroundings.blocked.down
+   && surroundings.blocked.up
+    )
+ || (
+      surroundings.in_wall
+   && surroundings.blocked.left
+   && surroundings.blocked.right
+    )
+  );
 }
 
 export function crop_velocity(vel, cap) {

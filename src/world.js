@@ -3,6 +3,7 @@
 
 import * as blocks from "./blocks";
 import * as biomes from "./biomes";
+import * as rng from "./rng";
 
 // Constants
 export const PANE_SIZE = 24;
@@ -534,4 +535,165 @@ export function is_ready(entity, action) {
     entity.cooldowns[action] <= 0
  || entity.cooldowns[action] == undefined
   );
+}
+
+// Default amount of chaos in random walks
+export var DEFAULT_WALK_CHAOS_FACTOR = 0.25;
+
+// Cutoff for random walk before we just go directly to destination
+export var WALK_MAX_STRETCH = 2.0;
+
+export function walk_randomly(pane, fr, to, block, respect, chaos_factor) {
+  // Takes a random walk between the given positions, putting the given block
+  // at each point visited along the way. The chaos_factor controls how likely
+  // the random walk is to deviate from the direct route at each step (but
+  // repeated deviations are somewhat less likely). The respect parameter is
+  // optional, and should be a function that takes a block ID and returns true
+  // if that block should be left as-is instead of overwritten.
+
+  let seed = pane.params.seed + 587230482;
+
+  let here = fr.slice();
+  let steps_taken = 0;
+
+  // Estimate of # of steps that should be required:
+  let estimate = Math.abs(to[1] - fr[1]) + Math.abs(to[0] - fr[0]);
+
+  // Visited set:
+  let visited = new Set();
+
+  let step_options = [ [-1, 0], [1, 0], [0, -1], [0, 1] ];
+
+  // Loop until we get there (or take too many steps not getting there)
+  while (
+    steps_taken < estimate * WALK_MAX_STRETCH
+ && (here[0] != to[0] || here[1] != to[1])
+  ) {
+    // Set the block unless we should respect it:
+    if (respect == undefined || !respect(block_at(pane, here))) {
+      set_block(pane, here, block);
+    }
+    // Increment steps:
+    steps_taken += 1;
+    // Record visit:
+    visited.add(here[0] + "," + here[1]);
+
+    if (rng.flip(seed, chaos_factor)) { // random step
+      let step, next;
+      let off = rng.select(0, step_options.length - 1, seed);
+      for (let i = 0; i < step_options.length; ++i) {
+        step = step_options[(off + i) % step_options.length];
+        next = [here[0] + step[0], here[1] + step[1]];
+        if (!visited.has(next[0] + "," + next[1])) {
+          break;
+        }
+      }
+      here = next; // move to the chosen spot (default last if all visited)
+    } else { // no random step
+      // Compute our next step and take it:
+      let dxy = next_step_along(fr, to, here);
+      here[0] += dxy[0];
+      here[1] += dxy[1];
+    }
+  }
+  // If we didn't get there, go directly the rest of the way:
+  if (here[0] != to[0] || here[1] != to[1]) {
+    walk_directly(pane, fr, to, block, respect);
+  }
+
+  // Set final block:
+  if (respect == undefined || !respect(block_at(pane, to))) {
+    set_block(pane, to, block);
+  }
+}
+
+export function walk_directly(pane, fr, to, block, respect) {
+  // Rasters a line between the two locations and places the given block on
+  // each tile hit. Doesn't place a block when a respect function is provided
+  // and it returns true for the block that's already there.
+  let here = fr.slice();
+
+  let total_dx = to[0] - fr[0];
+  let total_dy = to[1] - fr[1];
+  let target_slope = total_dy / total_dx;
+  let pos_slope = target_slope > 0;
+
+  while (here[0] != to[0] || here[1] != to[1]) {
+    // Set the block unless we should respect it:
+    if (respect == undefined || !respect(block_at(pane, here))) {
+      set_block(pane, here, block);
+    }
+
+    // Compute our next step and take it:
+    let dxy = next_step_along(fr, to, here);
+    here[0] += dxy[0];
+    here[1] += dxy[1];
+  }
+
+  // Set final block:
+  if (respect == undefined || !respect(block_at(pane, here))) {
+    set_block(pane, here, block);
+  }
+}
+
+export function next_step_along(start, destination, here) {
+  // Figures out from a given position what the next position along a line
+  // from the start to the destination is. Simply measures the distance from
+  // the ideal line to each of the possible adjacent spots and picks the one
+  // that results in the smallest distance. Returns the dx/dy vector.
+  let best = undefined;
+  let candidate = undefined;
+  let options = [];
+  if (here[0] < destination[0]) {
+    options.push([1, 0]);
+  } else if (here[0] > destination[0]) {
+    options.push([-1, 0]);
+  }
+  if (here[1] < destination[1]) {
+    options.push([0, 1]);
+  } else if (here[1] > destination[1]) {
+    options.push([0, -1]);
+  }
+  for (let dxy of options) {
+    let next = [here[0] + dxy[0], here[1] + dxy[1]];
+    let dn = distance_to_line(next, start, destination);
+    if (best == undefined || dn < best) {
+      best = dn;
+      candidate = dxy;
+    }
+  }
+  return candidate;
+}
+
+export function distance_to_line(pos, start, dest) {
+  // Returns the distance between the center of the given square and the line
+  // between the centers of the start and destination squares.
+  // Ref: https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+
+  x0 = pos[0];
+  y0 = pos[1];
+  x1 = start[0];
+  y1 = start[1];
+  x2 = dest[0];
+  y2 = dest[1];
+
+  let num = Math.abs((y2 - y1)*x0 - (x2 -x1)*y0 + x2*y1 - y2*x1);
+  return num / Math.sqrt(Math.pow(y2 - y1, 2) + Math.pow(x2 - x1, 2));
+}
+
+export function entrance_pos(entrance) {
+  let side = entrance[0];
+  let idx = entrance[1];
+
+  if (side == "top") {
+    return [idx, 0];
+  } else if (side == "bottom") {
+    return [idx, PANE_SIZE - 1];
+  } else if (side == "left") {
+    return [0, idx];
+  } else if (side == "right") {
+    return [PANE_SIZE - 1, idx];
+  } else {
+    console.error("Invalid entrance side: '" + side + "'");
+  }
 }

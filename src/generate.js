@@ -36,8 +36,8 @@ export function generate_pane(wld, pid) {
   let biome_templates = templates.T[biome.type];
   for (let k of Object.keys(biome_templates)) {
     let t = biome_templates[k];
-    if (t[0](wld, pane)) {
-      fits.push([k, t[1]]);
+    if (t.applicable_to(wld, pane)) {
+      fits.push([k, t.generate]);
     }
   }
   let seed = rng.next(pane.params.seed + 572);
@@ -47,7 +47,7 @@ export function generate_pane(wld, pid) {
     seal_generation(pane, "<<error: no matching templates>>");
     return;
   }
-  let chosen = fits[seed % fits.length];
+  let chosen = fits[rng.select(0, fits.length - 1, seed)];
   chosen[1](wld, pane); // call generator function
   seal_generation(pane, chosen[0]); // mark as generated
 }
@@ -180,10 +180,10 @@ export function fill_start_pane(wld, id) {
     [15, 15]
   ];
   let entrances = [
-    ["right", 18],
-    ["left", 18],
-    ["right", 6],
-    ["left", 6]
+    ["right", 12],
+    ["left", 12],
+    ["right", 12],
+    ["left", 12]
   ];
   for (let bt of biomes.START_BIOMES) {
     let biome = world.create_biome(wld, bt);

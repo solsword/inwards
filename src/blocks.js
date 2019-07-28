@@ -23,7 +23,8 @@ export var BLOCKS = [
 export var CHAOS = 0;
 export var AIR = 1;
 export var DIRT = 2;
-export var STONE = 3;
+export var BRIDGE = 3;
+export var STONE = 4;
 
 export function by_id(bid) {
   for (let i = 0; i < BLOCKS.length; ++i) {
