@@ -19,7 +19,7 @@ export function flip(seed, p) {
   // advanced afterwards. Resolution is 1/FLIP_RESOLUTION.
   let r = next(next(seed + FLIP_RESOLUTION/2.483));
   let t = p * FLIP_RESOLUTION;
-  return (r % FLIP_RESOLUTION) < t;
+  return (((r % FLIP_RESOLUTION) + FLIP_RESOLUTION) % FLIP_RESOLUTION) < t;
 }
 
 export function select(min, max, seed) {

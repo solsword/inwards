@@ -180,10 +180,10 @@ export function fill_start_pane(wld, id) {
     [15, 15]
   ];
   let entrances = [
-    ["right", 12],
-    ["left", 12],
-    ["right", 12],
-    ["left", 12]
+    ["right", 11],
+    ["left", 11],
+    ["right", 11],
+    ["left", 11]
   ];
   for (let bt of biomes.START_BIOMES) {
     let biome = world.create_biome(wld, bt);

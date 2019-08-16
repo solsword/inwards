@@ -24,7 +24,23 @@ export function excavate_bsp(pane, partition, block, respect) {
     for (let to of partition.edges[fr]) {
       let to_node = partition.nodes[to];
       let end = bsp.node_centerish(partition, to_node);
-      world.walk_randomly(pane, start, end, block, respect);
+      //world.walk_randomly(pane, start, end, block, respect);
+      world.walk_directly(pane, start, end, block, respect);
+    }
+  }
+}
+
+export function show_bsp(pane, partition, blocks) {
+  // Debugging function to draw each node of the BSP using a different block.
+  let i = 0;
+  for (let nid of Object.keys(partition.nodes)) {
+    let node = partition.nodes[nid]
+    let block = blocks[i];
+    i = (i + 1) % blocks.length;
+    for (let x = node.left; x <= node.right; ++x) {
+      for (let y = node.top; y <= node.bottom; ++y) {
+        world.set_block(pane, [x, y], block);
+      }
     }
   }
 }
@@ -261,8 +277,38 @@ T.upper_caverns.cave = {
     world.fill_pane(pane, blocks.STONE);
 
     // Build and excavate BSP to carve tunnels:
-    let partition = bsp.bsp_graph(pane.params.seed);
+    let minsize = rng.choice([4, 5, 6], seed);
+    seed = rng.next(seed);
+    let connectivity = rng.uniform(seed);
+    seed = rng.next(seed);
+    connectivity = Math.min(connectivity, rng.uniform(seed));
+    seed = rng.next(seed);
+    connectivity = (connectivity + 0.4)/2;
+    let partition = bsp.bsp_graph(
+      pane.params.seed + 192815,
+      minsize,
+      connectivity
+    );
+    /* Uncomment this to draw each BSP cell with a different block type * /
+    show_bsp(
+      pane,
+      partition,
+      [
+        blocks.by_id("dirt"),
+        blocks.by_id("bridge"),
+        blocks.by_id("smooth_stone"),
+        blocks.by_id("ice"),
+        blocks.by_id("ice_bridge"),
+        blocks.by_id("trunk"),
+        blocks.by_id("branches"),
+        blocks.by_id("leaves"),
+        blocks.by_id("water"),
+        blocks.by_id("brick")
+      ]
+    );
+    // */
     excavate_bsp(pane, partition, blocks.AIR); // nothing to respect
+
 
     // Add a random entrance if we don't have any:
     if (entrances == undefined) {
@@ -276,6 +322,7 @@ T.upper_caverns.cave = {
       let node_id = bsp.lookup_pos(partition, epos);
       let node = partition.nodes[node_id];
       let center = bsp.node_centerish(partition, node);
+      //world.walk_randomly(pane, epos, center, blocks.AIR);
       world.walk_randomly(pane, epos, center, blocks.AIR);
     }
 

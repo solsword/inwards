@@ -16,9 +16,9 @@ export var DEFAULT_PRUNE_FRACTION = 0.5;
 
 export function bsp_graph(seed, min_size, cycle_prob) {
   // Creates a random binary space partition graph for a pane. Each node in the
-  // graph covers some finite region of a pane, not smaller than min_size on
-  // either size, and not larger than 2*min_size. Each node also has edges to
-  // some of its neighboring nodes, potentially in ways that create cycles.
+  // graph covers some finite region of a pane, not smaller than min_size in
+  // either dimension, and not larger than 2*min_size. Each node also has edges
+  // to some of its neighboring nodes, potentially in ways that create cycles.
   // All three arguments are optional.
   //
   // If cycle_prob is 0, the graph will be a tree, and if cycle_prob is 1, the
