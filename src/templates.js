@@ -46,18 +46,28 @@ export function show_bsp(pane, partition, blocks) {
 }
 
 export function random_inlay_size(seed) {
-    // Picks a random size for an inlay; one of 12, 8, or 6 blocks with a bias
-    // towards smaller sizes. The given seed should be advanced afterwards.
-    let isizei = 0;
-    seed = rng.next(seed + 38928341);
-    if (rng.flip(seed, 0.5)) {
-      isizei += 1;
-    }
-    seed = rng.next(seed);
-    if (isizei < 2 && rng.flip(seed, 0.33)) {
-      isizei += 1;
-    }
-    return [12, 8, 6][isizei];
+  // Picks a random size for an inlay; one of 12, 8, or 6 blocks with a bias
+  // towards smaller sizes. The given seed should be advanced afterwards.
+  let isizei = 0;
+  seed = rng.next(seed + 38928341);
+  if (rng.flip(seed, 0.5)) {
+    isizei += 1;
+  }
+  seed = rng.next(seed);
+  if (isizei < 2 && rng.flip(seed, 0.33)) {
+    isizei += 1;
+  }
+  return [12, 8, 6][isizei];
+}
+
+export function random_small_inlay_size(seed) {
+  // Picks a random size for an inlay; either 8 or 6 blocks. The given seed
+  // should be advanced afterwards.
+  if (rng.flip(seed, 0.5)) {
+    return 6;
+  } else {
+    return 8;
+  }
 }
 
 
@@ -354,6 +364,160 @@ T.upper_caverns.cave = {
   }
 }
 
+T.upper_caverns.branch_cave = {
+  // Like cave, but includes two inlays.
+  // TODO: Generalize # of inlays between 1 and 3.
+  'applicable_to': function (wld, pane) {
+    // TODO
+    return true;
+    /*
+     * TODO: traversibility?
+    let constraints = pane.params.constraints || {};
+    if (constraints.hasOwnProperty("traverse_depth")) {
+      if (constraints.traverse_depth < 1) {
+        return false;
+      }
+    }
+    return true;
+    */
+  },
+  'generate': function (wld, pane) {
+    let seed = pane.params.seed >>> 0;
+    if (seed == undefined) { seed = 17; }
+
+    let constraints = pane.params.constraints || {};
+    let entrances = constraints.entrances;
+    let tdc = constraints.traverse_depth;
+
+    // Pick sizes for inlays:
+    let isize1 = random_small_inlay_size(seed);
+    seed = rng.next(seed);
+    let isize2 = random_small_inlay_size(seed);
+    seed = rng.next(seed);
+
+    // Pick quadrants for both inlays:
+    let q1 = rng.select(0, 3, seed);
+    seed = rng.next(seed);
+    let q2 = (q1 + rng.select(1, 3, seed)) % 4;
+    seed = rng.next(seed);
+
+    // Pick anchor position for each inlay within its quadrant (1-block margin
+    // on all sides):
+    let ipos1 = pick_pos_in_quadrant(q1, 1, isize1, seed);
+    seed = rng.next(seed);
+    let ipos2 = pick_pos_in_quadrant(q2, 1, isize2, seed);
+    seed = rng.next(seed);
+
+    // Fill with stone:
+    world.fill_pane(pane, blocks.STONE);
+
+    // Build and excavate BSP to carve tunnels:
+    let minsize = rng.choice([4, 5, 6], seed);
+    seed = rng.next(seed);
+    let connectivity = rng.uniform(seed);
+    seed = rng.next(seed);
+    connectivity = Math.min(connectivity, rng.uniform(seed));
+    seed = rng.next(seed);
+    connectivity = (connectivity + 0.4)/2;
+    let partition = bsp.bsp_graph(
+      pane.params.seed + 192815,
+      minsize,
+      connectivity
+    );
+    /* Uncomment this to draw each BSP cell with a different block type * /
+    show_bsp(
+      pane,
+      partition,
+      [
+        blocks.by_id("dirt"),
+        blocks.by_id("bridge"),
+        blocks.by_id("smooth_stone"),
+        blocks.by_id("ice"),
+        blocks.by_id("ice_bridge"),
+        blocks.by_id("trunk"),
+        blocks.by_id("branches"),
+        blocks.by_id("leaves"),
+        blocks.by_id("water"),
+        blocks.by_id("brick")
+      ]
+    );
+    // */
+    excavate_bsp(pane, partition, blocks.AIR); // nothing to respect
+
+
+    // Add a random entrance if we don't have any:
+    if (entrances == undefined) {
+      entrances = [ random_entrance(seed) ];
+      seed = rng.next(seed);
+    }
+
+    // Excavate from each entrance to its graph node:
+    for (let ent of entrances) {
+      let epos = world.entrance_pos(ent);
+      let node_id = bsp.lookup_pos(partition, epos);
+      let node = partition.nodes[node_id];
+      let center = bsp.node_centerish(partition, node);
+      //world.walk_randomly(pane, epos, center, blocks.AIR);
+      world.walk_randomly(pane, epos, center, blocks.AIR);
+    }
+
+    // Compute inlay entrances:
+    let sub_entrances1 = deduce_inlay_entrances(pane, ipos1, isize1);
+    if (sub_entrances1.length == 0) {
+      console.warn(
+        "No entrances deduced for cave inlay 1!",
+        pane,
+        ipos1,
+        isize1
+      );
+    }
+    let sub_entrances2 = deduce_inlay_entrances(pane, ipos2, isize2);
+    if (sub_entrances2.length == 0) {
+      console.warn(
+        "No entrances deduced for cave inlay 2!",
+        pane,
+        ipos2,
+        isize2
+      );
+    }
+
+    // Inlay parameters:
+    let params1 = {
+      "seed": rng.sub_seed(pane.params.seed, ipos1),
+      "constraints": {
+        "entrances": sub_entrances1
+      }
+    }
+    let params2 = {
+      "seed": rng.sub_seed(pane.params.seed, ipos2),
+      "constraints": {
+        "entrances": sub_entrances2
+      }
+    }
+
+    if (tdc != undefined && tdc > 0) {
+      params1.constraints.traverse_depth = tdc - 1;
+      params2.constraints.traverse_depth = tdc - 1;
+    }
+
+    // Create and inset inlay panes:
+    let sub1 = world.create_pane(
+      wld,
+      params1,
+      pane.zone, // same zone (TODO: always?)
+      undefined // generate a new id (TODO: always?)
+    );
+    world.inset_pane(pane, ipos1, wld.panes[sub1.id], isize1);
+    let sub2 = world.create_pane(
+      wld,
+      params2,
+      pane.zone, // same zone (TODO: always?)
+      undefined // generate a new id (TODO: always?)
+    );
+    world.inset_pane(pane, ipos2, wld.panes[sub2.id], isize2);
+  }
+}
+
 export function deduce_inlay_entrances(pane, pos, size) {
   // Creates a list of entrance constraints based on where solid blocks are
   // adjacent to an inlay with the given size anchored at the given position.
@@ -484,4 +648,63 @@ export function random_entrance(seed) {
   let side = rng.choice(["top", "bottom", "left", "right"], seed);
   seed = rng.next(seed);
   return [side, rng.select(0, world.PANE_SIZE - 1, seed)];
+}
+
+export function pick_pos_in_quadrant(quadrant, border, size, seed) {
+  // Picks a random position in the given quadrant (reading order from top
+  // left) with at least the given border size between the object and the edge
+  // of the quadrant on all sides, for an object of the given size. The seed
+  // should be advanced afterwards. Returns an [x, y] pair.
+
+  // Scramble the local seed:
+  seed ^= 927398749;
+
+  // If the border + size is too big, ignore the size and always return the
+  // upper-left-most position:
+  if (border*2 + size > 12) {
+    console.warn(
+      "Asked to pick position in quadrant with border " + border + " and size "
+    + size + " but there isn't room to do so! Respecting border but not size."
+    );
+    if (quadrant == 0) {
+      return [border+1, border+1];
+    } else if (quadrant == 1) {
+      return [12 + border + 1, border + 1];
+    } else if (quadrant == 2) {
+      return [border + 1, 12 + border + 1];
+    } else {
+      return [12 + border + 1, 12 + border + 1];
+    }
+  }
+
+  // Figure out (inclusive) bounds for this quadrant:
+  let left, right, top, bottom;
+  if (quadrant == 0) {
+    left = border + 1;
+    right = 12 - border - size;
+    top = border + 1;
+    bottom = 12 - border - size;
+  } else if (quadrant == 1) {
+    left = 12 + border + 1;
+    right = 24 - border - size;
+    top = border + 1;
+    bottom = 12 - border - size;
+  } else if (quadrant == 2) {
+    left = border + 1;
+    right = 12 - border - size;
+    top = 12 + border + 1;
+    bottom = 24 - border - size;
+  } else {
+    left = 12 + border + 1;
+    right = 24 - border - size;
+    top = 12 + border + 1;
+    bottom = 24 - border - size;
+  }
+
+  // Pick random position given bounds:
+  let x = rng.select(left, right, seed);
+  seed = rng.next(seed);
+  let y = rng.select(top, bottom, seed);
+
+  return [x, y];
 }
